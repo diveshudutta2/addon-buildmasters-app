@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Addon Buildmasters — Google Business Growth Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+
+    <!-- Top Navbar -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3.5 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center justify-center text-amber-500 text-xl">
+                    <i class="fa-solid fa-helmet-safety"></i>
+                </div>
+                <div>
+                    <span class="text-lg font-bold tracking-tight text-white block leading-tight">Addon Buildmasters</span>
+                    <span class="text-[11px] text-amber-400 font-medium">Local SEO & Growth Command Center</span>
+                </div>
+            </div>
+            <div>
+                {% if logged_in %}
+                    <div class="flex items-center gap-3">
+                        <span class="text-xs bg-slate-800 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-700 hidden sm:inline-flex items-center gap-1.5">
+                            <i class="fa-regular fa-user text-amber-400"></i> {{ user_email }}
+                        </span>
+                        <a href="/logout" class="text-xs bg-red-600/80 hover:bg-red-700 text-white font-medium px-3 py-1.5 rounded-lg transition">Logout</a>
+                    </div>
+                {% else %}
+                    <a href="/login" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold px-4 py-2 rounded-xl transition inline-flex items-center gap-2 text-sm shadow-md shadow-amber-500/10">
+                        <i class="fa-brands fa-google"></i> Connect Google Business
+                    </a>
+                {% endif %}
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-6xl mx-auto px-4 py-8">
+        {% if not logged_in %}
+            <!-- Hero Screen -->
+            <div class="text-center py-20 bg-slate-900/50 rounded-3xl border border-slate-800 p-8 shadow-2xl relative overflow-hidden">
+                <div class="w-16 h-16 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-2xl flex items-center justify-center mx-auto mb-5 text-3xl">
+                    <i class="fa-solid fa-location-dot"></i>
+                </div>
+                <h1 class="text-3xl sm:text-4xl font-extrabold mb-3 text-white tracking-tight">Google Maps Ranking Tracker & Task Engine</h1>
+                <p class="text-slate-400 max-w-xl mx-auto mb-8 text-sm leading-relaxed">
+                    Addon Buildmasters की प्रोफ़ाइल को हरियाणा और दिल्ली-NCR में टॉप 3 लोकल पैक में लाने के लिए रियल-टाइम ट्रैकिंग, AI पोस्ट्स और डेली एक्शनेबल टास्क्स।
+                </p>
+                <a href="/login" class="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-8 py-3.5 rounded-xl shadow-lg transition inline-flex items-center gap-2.5 text-base">
+                    <i class="fa-brands fa-google text-lg"></i> Google Business Profile कनेक्ट करें
+                </a>
+            </div>
+        {% else %}
+            <!-- Live Overview Header -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+                <div>
+                    <h1 class="text-2xl font-bold text-white">Addon Buildmasters Overview</h1>
+                    <p class="text-xs text-slate-400 mt-1">Google Maps Profile Status: <span class="text-emerald-400 font-medium">Verified & Live</span></p>
+                </div>
+                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Sync Active
+                </span>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase">
+                        <span>Search Views</span>
+                        <i class="fa-solid fa-magnifying-glass text-slate-600"></i>
+                    </div>
+                    <div class="text-2xl font-extrabold text-white mt-2">1,420</div>
+                    <div class="text-[11px] text-emerald-400 mt-1 font-medium"><i class="fa-solid fa-arrow-trend-up"></i> +12% this week</div>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase">
+                        <span>Maps Impressions</span>
+                        <i class="fa-regular fa-map text-slate-600"></i>
+                    </div>
+                    <div class="text-2xl font-extrabold text-white mt-2">890</div>
+                    <div class="text-[11px] text-emerald-400 mt-1 font-medium"><i class="fa-solid fa-arrow-trend-up"></i> +8% this week</div>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase">
+                        <span>Phone Inquiries</span>
+                        <i class="fa-solid fa-phone text-amber-500"></i>
+                    </div>
+                    <div class="text-2xl font-extrabold text-amber-400 mt-2">28</div>
+                    <div class="text-[11px] text-slate-400 mt-1">Direct call button clicks</div>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 text-xs font-semibold uppercase">
+                        <span>Profile SEO Score</span>
+                        <i class="fa-solid fa-shield-halved text-emerald-500"></i>
+                    </div>
+                    <div class="text-2xl font-extrabold text-emerald-400 mt-2" id="score-display">85%</div>
+                    <div class="text-[11px] text-amber-400 mt-1" id="pending-tasks-text">3 Tasks Pending</div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Left 2 Cols: Tasks & Post Generator -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Tasks Box -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+                        <div class="flex justify-between items-center mb-6">
+                            <div>
+                                <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                                    <i class="fa-solid fa-list-check text-amber-500"></i> आज के Local SEO एक्शन टास्क्स
+                                </h2>
+                                <p class="text-xs text-slate-400 mt-0.5">Google Maps अल्गोरिदम को सिग्नल देने के लिए ये टास्क पूरे करें</p>
+                            </div>
+                            <span class="text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full">Daily Targets</span>
+                        </div>
+
+                        <div class="space-y-3.5">
+                            <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-start gap-4 hover:border-slate-700 transition">
+                                <input type="checkbox" id="task1" onchange="updateProgress()" class="w-5 h-5 mt-1 accent-amber-500 rounded cursor-pointer">
+                                <div class="flex-1">
+                                    <label for="task1" class="font-semibold text-sm text-slate-100 cursor-pointer">साइट वर्क की 2 नई फ़ोटोज़ अपलोड करें</label>
+                                    <div class="text-xs text-slate-400 mt-1">चल रहे कंस्ट्रक्शन, 3D एलीवेशन या इंटीरियर वर्क की ताज़ा फ़ोटो अपलोड करें। एक्टिव प्रोफ़ाइल्स को Google Maps पर 2x प्रायोरिटी मिलती है।</div>
+                                </div>
+                                <span class="text-xs bg-slate-800/80 text-amber-400 px-2.5 py-1 rounded-lg border border-slate-700 font-mono">+15 Pts</span>
+                            </div>
+
+                            <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-start gap-4 hover:border-slate-700 transition">
+                                <input type="checkbox" id="task2" onchange="updateProgress()" class="w-5 h-5 mt-1 accent-amber-500 rounded cursor-pointer">
+                                <div class="flex-1">
+                                    <label for="task2" class="font-semibold text-sm text-slate-100 cursor-pointer">Google Post शेयर करें (Update / Offer)</label>
+                                    <div class="text-xs text-slate-400 mt-1">नीचे दिए गए 'AI Post Generator' से तुरंत पोस्ट का टेक्स्ट कॉपी करके अपने Google Business डैशबोर्ड पर पब्लिश करें।</div>
+                                </div>
+                                <span class="text-xs bg-slate-800/80 text-amber-400 px-2.5 py-1 rounded-lg border border-slate-700 font-mono">+20 Pts</span>
+                            </div>
+
+                            <div class="p-4 bg-slate-950/60 border border-slate-800 rounded-2xl flex items-start gap-4 hover:border-slate-700 transition">
+                                <input type="checkbox" id="task3" onchange="updateProgress()" class="w-5 h-5 mt-1 accent-amber-500 rounded cursor-pointer">
+                                <div class="flex-1">
+                                    <label for="task3" class="font-semibold text-sm text-slate-100 cursor-pointer">हाल ही के 1 क्लाइंट से 5-स्टार रिव्यू माँगें</label>
+                                    <div class="text-xs text-slate-400 mt-1">दाएँ पैनल में क्लाइंट का नाम डालकर 1-क्लिक में WhatsApp रिव्यू रिक्वेस्ट भेजें।</div>
+                                </div>
+                                <span class="text-xs bg-slate-800/80 text-amber-400 px-2.5 py-1 rounded-lg border border-slate-700 font-mono">+30 Pts</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Post Generator Tool -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <h3 class="text-base font-bold text-white flex items-center gap-2">
+                                <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i> AI Google Post Generator
+                            </h3>
+                            <span class="text-[11px] text-slate-400">Addon Buildmasters</span>
+                        </div>
+                        <p class="text-xs text-slate-400 mb-4">कैटेगरी चुनें और रेडीमेड पोस्ट कॉपी करके Google My Business पर पब्लिश करें:</p>
+                        
+                        <div class="flex flex-wrap gap-2 mb-4">
+                            <button onclick="generatePost('construction')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl transition">🏗️ Turnkey Construction</button>
+                            <button onclick="generatePost('elevation')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl transition">🏡 Modern 3D Elevation</button>
+                            <button onclick="generatePost('interior')" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-xl transition">🛋️ Luxury Interior Design</button>
+                        </div>
+
+                        <div class="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 text-xs font-mono text-slate-300 whitespace-pre-line leading-relaxed" id="post-box">Addon Buildmasters - आपके सपनों का घर, हमारी मजबूत नींव! 🏗️🏡
+
+हम प्रदान करते हैं:
+✔️ A-Grade मटीरियल और भूकंप-रोधी संरचना
+✔️ पारदर्शी बजट और समय पर डिलीवरी
+✔️ अनुभवी इंजीनियर्स और आर्किटेक्ट्स की निगरानी
+
+फ्री साइट विज़िट और कंसल्टेशन के लिए आज ही कॉल करें!
+#AddonBuildmasters #Construction #TurnkeyProjects #Haryana</div>
+
+                        <div class="mt-3 flex justify-end">
+                            <button onclick="copyPost()" class="text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 px-4 py-2 rounded-xl transition inline-flex items-center gap-1.5 font-semibold">
+                                <i class="fa-regular fa-copy"></i> Copy Post Text
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Col: Review Assistant & Keywords -->
+                <div class="space-y-6">
+                    <!-- WhatsApp Review Requester -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+                        <h3 class="text-base font-bold text-white flex items-center gap-2 mb-2">
+                            <i class="fa-brands fa-whatsapp text-emerald-400 text-lg"></i> Review Request Link
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-4">क्लाइंट को पर्सनलाइज्ड WhatsApp मैसेज भेजें:</p>
+                        
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-[11px] font-semibold text-slate-400 uppercase">Client Name</label>
+                                <input type="text" id="client-name" placeholder="उदा. Sharma Ji" class="w-full mt-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500">
+                            </div>
+                            <button onclick="sendReviewWhatsApp()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-2">
+                                <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp पर मैसेज भेजें
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Keywords to Rank For -->
+                    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
+                        <h3 class="text-base font-bold text-white flex items-center gap-2 mb-2">
+                            <i class="fa-solid fa-bullseye text-amber-500"></i> Top Target Keywords
+                        </h3>
+                        <p class="text-xs text-slate-400 mb-3">इन कीवर्ड्स को अपनी पोस्ट्स और रिव्यूज में इस्तेमाल करें:</p>
+                        <div class="flex flex-wrap gap-1.5">
+                            <span class="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700">Turnkey Construction</span>
+                            <span class="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700">Modern Front Elevation</span>
+                            <span class="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700">Luxury Interior Fitout</span>
+                            <span class="text-[11px] bg-slate-800 text-slate-300 px-2.5 py-1 rounded-lg border border-slate-700">Architect in Haryana</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </main>
+
+    <script>
+        function loadTasks() {
+            const saved1 = localStorage.getItem('task1') === 'true';
+            const saved2 = localStorage.getItem('task2') === 'true';
+            const saved3 = localStorage.getItem('task3') === 'true';
+            if (document.getElementById('task1')) document.getElementById('task1').checked = saved1;
+            if (document.getElementById('task2')) document.getElementById('task2').checked = saved2;
+            if (document.getElementById('task3')) document.getElementById('task3').checked = saved3;
+            calculateScore();
+        }
+
+        function updateProgress() {
+            if (document.getElementById('task1')) localStorage.setItem('task1', document.getElementById('task1').checked);
+            if (document.getElementById('task2')) localStorage.setItem('task2', document.getElementById('task2').checked);
+            if (document.getElementById('task3')) localStorage.setItem('task3', document.getElementById('task3').checked);
+            calculateScore();
+        }
+
+        function calculateScore() {
+            let score = 85;
+            let pending = 3;
+            if (document.getElementById('task1') && document.getElementById('task1').checked) { score += 5; pending--; }
+            if (document.getElementById('task2') && document.getElementById('task2').checked) { score += 5; pending--; }
+            if (document.getElementById('task3') && document.getElementById('task3').checked) { score += 5; pending--; }
+            if (score > 100) score = 100;
+            const scoreDisplay = document.getElementById('score-display');
+            const pendingText = document.getElementById('pending-tasks-text');
+            if (scoreDisplay) scoreDisplay.innerText = score + '%';
+            if (pendingText) pendingText.innerText = pending === 0 ? 'All Tasks Completed Today! 🎉' : pending + ' Tasks Pending';
+        }
+
+        const posts = {
+            construction: "Addon Buildmasters - आपके सपनों का घर, हमारी मजबूत नींव! 🏗️🏡\\n\\nहम प्रदान करते हैं:\\n✔️ A-Grade मटीरियल और भूकंप-रोधी संरचना\\n✔️ पारदर्शी बजट और समय पर डिलीवरी\\n✔️ अनुभवी इंजीनियर्स और आर्किटेक्ट्स की निगरानी\\n\\nफ्री साइट विज़िट और कंसल्टेशन के लिए आज ही कॉल करें!\\n#AddonBuildmasters #Construction #TurnkeyProjects #Haryana",
+            elevation: "क्या आप अपने घर को एक आधुनिक और शानदार लुक देना चाहते हैं? ✨\\n\\nAddon Buildmasters के साथ पाएँ प्रीमियम 3D फ्रंट एलीवेशन और आर्किटेक्चरल डिज़ाइन्स जो आपके घर को सबसे अलग और खूबसूरत बनाएँ।\\n\\n📞 अपने प्लॉट का नक्शा और 3D डिज़ाइन बनवाने के लिए संपर्क करें।\\n#FrontElevation #ModernArchitecture #3DDesign #AddonBuildmasters",
+            interior: "लक्ज़री इंटीरियर्स अब आपके बजट में! 🛋️️✨\\n\\nAddon Buildmasters आपके घर और ऑफ़िस को देता है मॉडर्न, एलिगेंट और फंक्शनल लुक।\\n✔️ मॉड्यूलर किचन\\n✔️ फ़ाल्स सीलिंग व कस्टम लाइटिंग\\n✔️ प्रीमियम वार्डरोब्स व वॉल पैनल्स\\n\\nआज ही विज़िट बुक करें!\\n#InteriorDesign #HomeDecor #ModularKitchen #AddonBuildmasters"
+        };
+
+        function generatePost(type) {
+            const box = document.getElementById('post-box');
+            if (box && posts[type]) {
+                box.innerText = posts[type].replace(/\\n/g, '\\n');
+            }
+        }
+
+        function copyPost() {
+            const box = document.getElementById('post-box');
+            if (box) {
+                navigator.clipboard.writeText(box.innerText);
+                alert('पोस्ट टेक्स्ट कॉपी हो गया! अब आप इसे सीधे Google Business पर पेस्ट कर सकते हैं।');
+            }
+        }
+
+        function sendReviewWhatsApp() {
+            const name = document.getElementById('client-name').value.trim() || 'सर';
+            const msg = `नमस्ते ${name}, Addon Buildmasters के साथ जुड़ने के लिए धन्यवाद!\\n\\nहमारा काम आपको कैसा लगा? कृपया Google Maps पर एक छोटा 5-स्टार रिव्यू और फ़ीडबैक ज़रूर दें:\\n\\n👉 [यहाँ अपना Google Review लिंक डालें]`;
+            const url = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+            window.open(url, '_blank');
+        }
+
+        window.onload = loadTasks;
+    </script>
+</body>
+</html>
