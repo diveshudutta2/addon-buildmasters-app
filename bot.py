@@ -1,199 +1,311 @@
+import os
+import json
+import io
 import time
+import base64
 import requests
+import urllib.parse
+from PIL import Image
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    filters,
+    ContextTypes,
+)
 
-# आपका Telegram Bot Token
-BOT_TOKEN = "8825765752:AAEwnDGTmHaD2nY0g2KAOYi9vP_Pr-pJH7I"
-BASE_URL = f"https://api.telegram.org/bot{BOT_TOKEN}"
+# Google My Business Authentication
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
 
-# पोस्ट टेम्पलेट्स
-POSTS = {
-    "construction": """🏗️ *Turnkey Construction — Addon Buildmasters* 🏡
+# ================= Configuration =================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYdyukSsJiDOimmtSYJteM8")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))  # Apna numeric Telegram ID dalein
+GMB_LOCATION_ID = os.getenv("GMB_LOCATION_ID", "accounts/ACCOUNT_ID/locations/LOCATION_ID")
+RENDER_BASE_URL = os.getenv("RENDER_BASE_URL", "https://addon-buildmasters-app.onrender.com")
 
-अपने सपनों का घर बनवाएँ आधुनिक तकनीक और 100% मजबूत मटीरियल के साथ!
-✔️ A-Grade मटीरियल और भूकंप-रोधी संरचना
-✔️ पारदर्शी बजट और समय पर प्रोजेक्ट डिलीवरी
-✔️ अनुभवी स्ट्रक्चरल इंजीनियर्स और आर्किटेक्ट्स
+# Temporary sessions: {chat_id: {"topic": "", "draft": "", "media_url": "", "waiting_photo": False}}
+user_sessions = {}
+os.makedirs("static", exist_ok=True)
 
-📍 *सर्विस एरिया:* हरियाणा एवं दिल्ली-NCR
-📞 फ्री साइट विज़िट और कंसल्टेशन के लिए आज ही कॉल करें!
+# ================= GMB Authentication =================
+GMB_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
 
-#AddonBuildmasters #ConstructionCompany #TurnkeyProjects #Haryana""",
+def get_gmb_token():
+    creds = None
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", GMB_SCOPES)
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            if not os.path.exists("credentials.json"):
+                raise FileNotFoundError("credentials.json missing! Google Cloud Console se download karein.")
+            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", GMB_SCOPES)
+            creds = flow.run_local_server(port=0)
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+    return creds.token
 
-    "elevation": """🏡 *Modern 3D Front Elevation — Addon Buildmasters* ✨
-
-क्या आप अपने घर को एक आधुनिक और शानदार लुक देना चाहते हैं?
-Addon Buildmasters के साथ पाएँ प्रीमियम 3D फ्रंट एलीवेशन और आर्किटेक्चरल डिज़ाइन्स जो आपके घर को सबसे अलग बनाएँ।
-
-✔️ 2D/3D नक्शा व फ्लोर प्लानिंग
-✔️ मॉडर्न एक्सटीरियर व लाइटिंग कॉन्सेप्ट
-✔️ कम्प्लीट एग्जीक्यूशन सपोर्ट
-
-📞 अपने प्लॉट का 3D डिज़ाइन बनवाने के लिए संपर्क करें!
-#FrontElevation #ModernArchitecture #3DDesign #AddonBuildmasters""",
-
-    "interior": """🛋️ *Luxury Interior Design — Addon Buildmasters* ✨
-
-लक्ज़री इंटीरियर्स अब आपके बजट में! अपने घर और ऑफ़िस को दें मॉडर्न और फंक्शनल लुक:
-✔️ मॉड्यूलर किचन व वार्डरोब्स
-✔️ डिज़ाइनर फ़ाल्स सीलिंग व कस्टम लाइटिंग
-✔️ प्रीमियम वॉल पैनल्स व फर्नीचर वर्क
-
-📞 आज ही अपनी साइट विज़िट और 3D कंसल्टेशन बुक करें!
-#InteriorDesign #HomeDecor #ModularKitchen #AddonBuildmasters"""
-}
-
-def send_message(chat_id, text, reply_markup=None):
-    url = f"{BASE_URL}/sendMessage"
+# ================= Publish to GMB =================
+async def publish_to_gmb(content, media_url=None):
+    token = get_gmb_token()
+    url = f"https://mybusiness.googleapis.com/v4/{GMB_LOCATION_ID}/localPosts"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
     payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "Markdown"
+        "languageCode": "en-IN",
+        "summary": content,
+        "callToAction": {"actionType": "CALL"}
     }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"Error sending message: {e}")
+    if media_url:
+        payload["media"] = [{"mediaFormat": "PHOTO", "sourceUrl": media_url}]
+        
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code in [200, 201]:
+        return response.json().get("name")
+    else:
+        raise Exception(f"GMB Error: {response.text}")
 
-def get_main_menu():
-    return {
-        "inline_keyboard": [
-            [{"text": "📋 आज के SEO टास्क", "callback_data": "menu_tasks"}],
-            [{"text": "✍️ AI Google Post निकालें", "callback_data": "menu_posts"}],
-            [{"text": "📊 Live GBP स्टेट्स देखें", "callback_data": "menu_stats"}],
-            [{"text": "⭐ WhatsApp रिव्यू लिंक", "callback_data": "menu_review"}]
-        ]
-    }
-
-def handle_callback(chat_id, data, message_id):
-    if data == "menu_tasks":
-        text = """📋 *Addon Buildmasters — आज के 3 मुख्य SEO टास्क:*
-
-1️⃣ *साइट फ़ोटो अपलोड (+15 Pts)*
-चल रहे कंस्ट्रक्शन, 3D एलीवेशन या पूरे हुए इंटीरियर की 2 नई ताज़ा फ़ोटोज़ Google Business पर अपलोड करें।
-
-2️⃣ *Google Update Post (+20 Pts)*
-आज की नई पोस्ट शेयर करें ताकि Google Maps एल्गोरिदम प्रोफ़ाइल को एक्टिव माने।
-
-3️⃣ *क्लाइंट रिव्यू रिक्वेस्ट (+30 Pts)*
-हाल ही के 1 क्लाइंट को WhatsApp पर रिव्यू लिंक भेजें।
-
-_Google Maps पर एक्टिव रहने से हरियाणा/NCR में लोकल कॉल्स 2x बढ़ती हैं!_ 🚀"""
-        markup = {
-            "inline_keyboard": [
-                [{"text": "✅ टास्क पूरे हो गए (+65 Pts)", "callback_data": "tasks_completed"}],
-                [{"text": "✍️ पोस्ट का टेक्स्ट चाहिए", "callback_data": "menu_posts"}],
-                [{"text": "🔙 मुख्य मेन्यू", "callback_data": "main_menu"}]
-            ]
-        }
-        send_message(chat_id, text, markup)
-
-    elif data == "tasks_completed":
-        send_message(chat_id, "🎉 *शानदार!* आज के सभी लोकल SEO टास्क पूरे हो गए हैं। Google Maps पर आपका प्रोफ़ाइल स्कोर बढ़ गया है! 💪", get_main_menu())
-
-    elif data == "menu_posts":
-        text = "✍️ *किस तरह की Google Post का टेक्स्ट चाहिए?*\nनीचे कैटेगरी चुनें, बॉट तुरंत रेडीमेड टेक्स्ट देगा:"
-        markup = {
-            "inline_keyboard": [
-                [{"text": "🏗️ Turnkey Construction", "callback_data": "post_construction"}],
-                [{"text": "🏡 Modern 3D Elevation", "callback_data": "post_elevation"}],
-                [{"text": "🛋️ Luxury Interior Design", "callback_data": "post_interior"}],
-                [{"text": "🔙 मुख्य मेन्यू", "callback_data": "main_menu"}]
-            ]
-        }
-        send_message(chat_id, text, markup)
-
-    elif data.startswith("post_"):
-        category = data.replace("post_", "")
-        content = POSTS.get(category, "पोस्ट उपलब्ध नहीं है।")
-        send_message(chat_id, f"👇 *इस टेक्स्ट को कॉपी करके सीधे Google Business पर पोस्ट करें:*\n\n{content}")
-        send_message(chat_id, "क्या कोई और मदद चाहिए?", get_main_menu())
-
-    elif data == "menu_stats":
-        stats_text = """📊 *Addon Buildmasters — Live Profile Overview*
-
-🔍 *Search Impressions:* 1,420 (+12% this week)
-🗺️ *Maps Views:* 890 (+8% this week)
-📞 *Customer Phone Calls:* 28 (Direct inquiries)
-🛡️ *Profile SEO Health:* 85% (Excellent)
-
-📍 *Service Area:* Haryana & Delhi-NCR
-⚡ *Status:* Profile Active & Verified"""
-        send_message(chat_id, stats_text, get_main_menu())
-
-    elif data == "menu_review":
-        rev_text = """⭐ *क्लाइंट रिव्यू रिक्वेस्ट जनरेटर:*
-
-क्लाइंट को पर्सनलाइज्ड WhatsApp मैसेज भेजने के लिए चैट में लिखें:
-👉 `/review [क्लाइंट का नाम]`
-
-*उदाहरण:*
-`/review शर्मा जी`
-या
-`/review Amit Kumar`
-
-बॉट तुरंत WhatsApp के लिए रेडीमेड मैसेज ड्राफ्ट कर देगा!"""
-        send_message(chat_id, rev_text, get_main_menu())
-
-    elif data == "main_menu":
-        send_message(chat_id, "🏢 *Addon Buildmasters Assistant — मुख्य मेन्यू:*", get_main_menu())
-
-def main():
-    print("=" * 50)
-    print("🤖 Addon Buildmasters Telegram Bot चालू हो गया है!")
-    print(f"👉 Bot Link: https://t.me/addon_buildmasters1704_bot")
-    print("=" * 50)
+# ================= OpenRouter AI Generation =================
+async def generate_post_text(topic, image_bytes=None, user_caption=None):
+    prompt_text = f"""
+    You are the AI manager for Addon Buildmasters Private Limited in Dharamshala, Kangra (HP).
+    Write an engaging, trustworthy, local-SEO friendly Google Business Profile post about: {topic}.
+    {f"User note/caption: {user_caption}" if user_caption else ""}
+    Rules:
+    - Tone: Professional, authoritative, and friendly for local clients.
+    - Mention: Dharamshala, Kangra, Himachal Pradesh.
+    - Use relevant emojis.
+    - Call to Action: Invite calls or visits for free site consultation.
+    - Maximum 1000 characters.
+    """
     
-    last_update_id = 0
-    while True:
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    if image_bytes:
+        base64_image = base64.b64encode(image_bytes).decode("utf-8")
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt_text},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                    }
+                ]
+            }
+        ]
+    else:
+        messages = [{"role": "user", "content": prompt_text}]
+        
+    payload = {
+        "model": "google/gemini-2.0-flash-001",
+        "messages": messages
+    }
+    
+    resp = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=35)
+    data = resp.json()
+    if "choices" in data and len(data["choices"]) > 0:
+        return data["choices"][0]["message"]["content"]
+    else:
+        raise Exception(f"OpenRouter Error: {data}")
+
+# ================= AI Image Generator =================
+async def generate_ai_image(topic, chat_id):
+    clean_topic = topic.replace("_", " ")
+    image_prompt = (
+        f"Ultra realistic 8k photorealistic architectural rendering of {clean_topic} "
+        f"by Addon Buildmasters, luxury modern villa in Dharamshala Himachal Pradesh mountains, "
+        f"clear blue sky, professional photography, cinematic lighting"
+    )
+    encoded = urllib.parse.quote(image_prompt)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded}?width=1024&height=768&nologo=true&seed={int(time.time())}"
+    
+    resp = requests.get(image_url, timeout=30)
+    if resp.status_code == 200:
+        filename = f"ai_{chat_id}_{int(time.time())}.jpg"
+        filepath = os.path.join("static", filename)
+        with open(filepath, "wb") as f:
+            f.write(resp.content)
+        public_url = f"{RENDER_BASE_URL}/static/{filename}"
+        return public_url, filepath
+    else:
+        raise Exception("AI image generation failed. Please try again.")
+
+# ================= Telegram Commands & Handlers =================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    await update.message.reply_text(
+        f"👋 **Namaste Addon Buildmasters!**\n\n"
+        f"Aapka Chat ID: `{chat_id}`\n\n"
+        "Nayi post banane ke liye **/newpost** likhein ya direct site ki **photo** bhej dein.",
+        parse_mode="Markdown"
+    )
+
+async def new_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🏢 Property Dealing", callback_data="top_property")],
+        [InlineKeyboardButton("🏗️ Construction Projects", callback_data="top_construction")],
+        [InlineKeyboardButton("🛋️ Modular Kitchen & Interior", callback_data="top_interior")]
+    ]
+    await update.message.reply_text(
+        "📌 **Kis topic par post banani hai?**",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+
+    # Topic Selection
+    if query.data.startswith("top_"):
+        topic = query.data.replace("top_", "").capitalize()
+        user_sessions[chat_id] = {"topic": topic, "waiting_photo": False}
+        
+        keyboard = [
+            [InlineKeyboardButton("📸 1. Main Apni Photo Bhejunga", callback_data="img_manual")],
+            [InlineKeyboardButton("🎨 2. AI Image Banayega", callback_data="img_ai")],
+            [InlineKeyboardButton("📝 3. Sirf Text (Bina Photo)", callback_data="img_none")]
+        ]
+        await query.edit_message_text(
+            f"Topic: **{topic}**\n\nAb image ke liye option chunein:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
+    # Option 1: Manual Photo Upload
+    elif query.data == "img_manual":
+        user_sessions[chat_id]["waiting_photo"] = True
+        await query.edit_message_text(
+            "📸 **Kripya abhi project ya site ki photo send karein.**\n(Aap chahein toh caption bhi likh sakte hain)."
+        )
+
+    # Option 2: AI Generated Image
+    elif query.data == "img_ai":
+        topic = user_sessions.get(chat_id, {}).get("topic", "Construction")
+        await query.edit_message_text("🎨 **OpenRouter AI image aur post taiyar kar raha hai...** ⏳")
+        
         try:
-            url = f"{BASE_URL}/getUpdates?offset={last_update_id + 1}&timeout=30"
-            resp = requests.get(url, timeout=35).json()
-
-            if resp.get("ok"):
-                for update in resp.get("result", []):
-                    last_update_id = update["update_id"]
-
-                    # Callback Queries (Inline Buttons)
-                    if "callback_query" in update:
-                        cb = update["callback_query"]
-                        chat_id = cb["message"]["chat"]["id"]
-                        data = cb.get("data", "")
-                        msg_id = cb["message"]["message_id"]
-                        handle_callback(chat_id, data, msg_id)
-
-                    # Text Messages
-                    elif "message" in update and "text" in update["message"]:
-                        msg = update["message"]
-                        chat_id = msg["chat"]["id"]
-                        text = msg["text"].strip()
-
-                        if text.startswith("/start"):
-                            welcome = f"""🏗️ *नमस्ते! Welcome to Addon Buildmasters Assistant* 🚀
-
-मैं आपका पर्सनल Google Business Profile और लोकल SEO असिस्टेंट हूँ।
-मैं Addon Buildmasters को Google Maps पर टॉप रैंकिंग पर लाने और ज्यादा क्लाइंट्स दिलाने में आपकी मदद करूँगा।
-
-नीचे दिए गए किसी भी बटन पर क्लिक करके शुरू करें:"""
-                            send_message(chat_id, welcome, get_main_menu())
-
-                        elif text.startswith("/review"):
-                            parts = text.split(maxsplit=1)
-                            client_name = parts[1] if len(parts) > 1 else "सर"
-                            review_msg = f"""नमस्ते {client_name}, Addon Buildmasters के साथ जुड़ने के लिए बहुत-बहुत धन्यवाद! 🙏
-
-हमारा काम आपको कैसा लगा? कृपया Google Maps पर अपने अनुभव का एक छोटा सा 5-स्टार रिव्यू और फ़ीडबैक ज़रूर दें। इससे हमें और बेहतर सेवा देने में मदद मिलेगी:
-
-👉 [यहाँ अपना Google Maps Review लिंक पेस्ट करें]"""
-                            send_message(chat_id, f"👇 *इस मैसेज को कॉपी करके {client_name} को WhatsApp पर भेजें:*\n\n{review_msg}")
-                            send_message(chat_id, "वापस मेन्यू पर जाने के लिए:", get_main_menu())
-
-                        else:
-                            send_message(chat_id, "विकल्प चुनने के लिए नीचे दिए गए मेन्यू का उपयोग करें:", get_main_menu())
-
+            img_public_url, local_file = await generate_ai_image(topic, chat_id)
+            post_text = await generate_post_text(topic)
+            
+            user_sessions[chat_id]["draft"] = post_text
+            user_sessions[chat_id]["media_url"] = img_public_url
+            
+            keyboard = [
+                [InlineKeyboardButton("✅ Approve & Post to Google", callback_data="approve_post")],
+                [InlineKeyboardButton("❌ Reject", callback_data="reject_post")]
+            ]
+            
+            with open(local_file, "rb") as f:
+                await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=f,
+                    caption=f"**OpenRouter AI Draft:**\n\n{post_text}",
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown"
+                )
         except Exception as e:
-            time.sleep(2)
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {str(e)}")
 
+    # Option 3: Text Only
+    elif query.data == "img_none":
+        topic = user_sessions.get(chat_id, {}).get("topic", "Construction")
+        await query.edit_message_text("✍️ OpenRouter post draft kar raha hai... ⏳")
+        try:
+            draft = await generate_post_text(topic)
+            user_sessions[chat_id]["draft"] = draft
+            user_sessions[chat_id]["media_url"] = None
+            
+            keyboard = [
+                [InlineKeyboardButton("✅ Approve & Post to Google", callback_data="approve_post")],
+                [InlineKeyboardButton("❌ Reject", callback_data="reject_post")]
+            ]
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"**OpenRouter Draft:**\n\n{draft}",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            await context.bot.send_message(chat_id=chat_id, text=f"❌ Error: {str(e)}")
+
+    # Approve & Post to Google My Business
+    elif query.data == "approve_post":
+        data = user_sessions.get(chat_id)
+        if data and data.get("draft"):
+            if query.message.photo:
+                await query.edit_message_caption(caption="Publishing live on Google My Business... 🚀")
+            else:
+                await query.edit_message_text("Publishing live on Google... 🚀")
+            try:
+                post_id = await publish_to_gmb(data["draft"], data.get("media_url"))
+                success_msg = f"✅ Post successfully Google My Business par LIVE ho gayi!\nPost ID: `{post_id}`"
+                await context.bot.send_message(chat_id=chat_id, text=success_msg, parse_mode="Markdown")
+            except Exception as e:
+                await context.bot.send_message(chat_id=chat_id, text=f"❌ Google API Error: {str(e)}")
+            user_sessions.pop(chat_id, None)
+
+    # Reject Post
+    elif query.data == "reject_post":
+        await context.bot.send_message(chat_id=chat_id, text="Post cancel kar di gayi hai. Nayi post ke liye /newpost bhejein.")
+        user_sessions.pop(chat_id, None)
+
+# ================= Photo Upload Handler (AI Vision) =================
+async def photo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    await update.message.reply_text("📸 Photo OpenRouter AI analyze kar raha hai aur post draft ho raha hai... ⏳")
+    
+    try:
+        photo_file = await update.message.photo[-1].get_file()
+        file_bytes = await photo_file.download_as_bytearray()
+        
+        caption = update.message.caption or "Site project photo"
+        topic = user_sessions.get(chat_id, {}).get("topic", "Construction & Design")
+        
+        draft = await generate_post_text(topic, image_bytes=file_bytes, user_caption=caption)
+        
+        user_sessions[chat_id] = {
+            "topic": topic,
+            "draft": draft,
+            "media_url": photo_file.file_path
+        }
+        
+        keyboard = [
+            [InlineKeyboardButton("✅ Approve & Post with Photo", callback_data="approve_post")],
+            [InlineKeyboardButton("❌ Reject", callback_data="reject_post")]
+        ]
+        
+        await update.message.reply_text(
+            f"**Aapki Photo ke sath OpenRouter AI Draft:**\n\n{draft}",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+# ================= Main Runner =================
 if __name__ == "__main__":
-    main()
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("newpost", new_post))
+    app.add_handler(CommandHandler("trial", new_post))
+    app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.PHOTO, photo_handler))
+    
+    print("Addon Buildmasters Bot running with OpenRouter...")
+    app.run_polling()
