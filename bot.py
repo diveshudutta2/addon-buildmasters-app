@@ -23,7 +23,7 @@ from google.auth.transport.requests import Request
 
 # ================= Configuration =================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYdyukSsJiDOimmtSYJteM8")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "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")
+OPENROUTER_API_KEY = "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"
 OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))  # Apna numeric Telegram ID dalein
 GMB_LOCATION_ID = os.getenv("GMB_LOCATION_ID", "accounts/ACCOUNT_ID/locations/LOCATION_ID")
 RENDER_BASE_URL = os.getenv("RENDER_BASE_URL", "https://addon-buildmasters-app.onrender.com")
