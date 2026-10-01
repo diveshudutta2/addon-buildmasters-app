@@ -128,28 +128,50 @@ def update_gmb_description(text):
         return True
     raise Exception(f"Google API Error: {resp.text}")
 
-# ================= Keyboards =================
+# ================= Classified Keyboards =================
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("📊 Live Keyword Ranks", callback_data="btn_ranks"),
-            InlineKeyboardButton("🔍 Live Keyword Scanner", callback_data="btn_scanner")
-        ],
-        [
-            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights"),
-            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc")
-        ],
-        [
-            InlineKeyboardButton("🛠️ Services List", callback_data="btn_services"),
-            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq")
+            InlineKeyboardButton("📊 1. SEO Management", callback_data="btn_seo"),
+            InlineKeyboardButton("📢 2. GMB Posts", callback_data="btn_post")
         ],
         [
             InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="btn_refresh")
         ]
     ])
 
+def seo_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("📊 Live Keyword Ranks", callback_data="btn_ranks"),
+            InlineKeyboardButton("🔍 Live Scanner", callback_data="btn_scanner")
+        ],
+        [
+            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights"),
+            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc")
+        ],
+        [
+            InlineKeyboardButton("🛠️️ Services List", callback_data="btn_services"),
+            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq")
+        ],
+        [
+            InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")
+        ]
+    ])
+
+def post_menu_keyboard():
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✍️ Create New Post", callback_data="btn_create_post"),
+            InlineKeyboardButton("📋 View Recent Posts", callback_data="btn_view_posts")
+        ],
+        [
+            InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")
+        ]
+    ])
+
 def back_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]])
+    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]])
 
 # ================= Handlers =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,7 +182,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text = (
             "🏢 **ADDON BUILDMASTERS - CONTROL PANEL**\n"
             "📍 *Dharamshala & Kangra | Google Business Profile*\n\n"
-            "Aapka account verified hai. Niche diye gaye options se live ranking aur SEO manage karein:"
+            "Aapka account verified hai. Niche diye gaye classifications mein se category chunein:"
         )
         if update.message:
             await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
@@ -301,6 +323,25 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data in ["btn_home", "btn_refresh"]:
         await start(update, context)
 
+    # Classification Menus
+    elif data == "btn_seo":
+        text = "📊 **SEO MANAGEMENT PANEL**\n\nApne Google Business Profile ke SEO aur rankings ko manage karne ke liye option chunein:"
+        await query.edit_message_text(text, reply_markup=seo_menu_keyboard(), parse_mode="Markdown")
+
+    elif data == "btn_post":
+        text = "📢 **GMB POSTS MANAGEMENT**\n\nGoogle Business Profile par naye updates aur posts create karne ke liye option chunein:"
+        await query.edit_message_text(text, reply_markup=post_menu_keyboard(), parse_mode="Markdown")
+
+    elif data == "btn_create_post":
+        text = "✍️ **Create GMB Post:**\n\nYeh feature jald hi fully integrate hoga jisse aap direct bot se post publish kar sakenge."
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Posts Menu", callback_data="btn_post")]])
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+
+    elif data == "btn_view_posts":
+        text = "📋 **Recent Posts Status:**\n\nAbhi koi active post scheduled nahi hai."
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Posts Menu", callback_data="btn_post")]])
+        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+
     elif data == "btn_ranks":
         await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
@@ -312,12 +353,12 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"📊 **LIVE KEYWORD RANKINGS**\n⏱️ *Updated: {now}*\n\n" + "\n\n".join(lines)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Re-Scan", callback_data="btn_ranks")],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
 
     elif data == "btn_scanner":
-        await query.edit_message_text("🔍 Live Keyword Scanner active ho raha hai... Google index scan kiya ja raha hai, ⏳")
+        await query.edit_message_text("🔍 Live Keyword Scanner active ho raha hai... ⏳")
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
         scan_results = []
         
@@ -335,7 +376,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         scanner_keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Re-Scan Again", callback_data="btn_scanner")],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
         await query.edit_message_text(scanner_text, reply_markup=scanner_keyboard, parse_mode="Markdown")
 
@@ -362,7 +403,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = f"📝 **OPTIMIZED LOCAL-SEO DESCRIPTION**\n\n_{desc}_\n\n*(Length: {len(desc)} / 750)*"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🚀 Live Update on Google Profile", callback_data="btn_apply_desc")],
-            [InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
 
@@ -410,5 +451,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(button_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    print("Addon Buildmasters Approval & PIN Secured Bot is running...")
+    print("Addon Buildmasters Classified Bot is running...")
     app.run_polling()
