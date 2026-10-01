@@ -1,879 +1,213 @@
 import os
-import json
-import datetime
-import pytz
-import requests
-import urllib.parse
-from bs4 import BeautifulSoup
+import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
-    Application,
+    ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
     MessageHandler,
-    filters,
+    ConversationHandler,
     ContextTypes,
+    filters,
 )
-from google.oauth2.credentials import Credentials
-
-# PDF Generation Libraries
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
+from reportlab.pdfgen import canvas
 
-# ================= Configuration =================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYdyukSsJiDOimmtSYJteM8")
-GMB_LOCATION_ID = "17965482236175056297"
-BUSINESS_NAME = "Addon Buildmasters"
+# Logging setup
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-# Owner Chat ID (Render Environment Variable se uthayega ya default)
-OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))
+# Conversation states for Property Search
+LOCATION, PRICE, PROPERTY_TYPE = range(3)
 
-# One-Time Activation PIN
-ONE_TIME_PIN = os.getenv("BOT_PIN", "1704")
+# Bot Token & Owner PIN (Aap apne environment variables ya config se le sakte hain)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 
-GMB_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
-
-# ================= Persistent Members Database =================
-MEMBERS_FILE = "approved_members.json"
-
-def load_approved_members():
-    if os.path.exists(MEMBERS_FILE):
-        try:
-            with open(MEMBERS_FILE, "r") as f:
-                return set(json.load(f))
-        except Exception:
-            pass
-    return {OWNER_CHAT_ID}
-
-def save_approved_member(chat_id):
-    members = load_approved_members()
-    members.add(chat_id)
-    with open(MEMBERS_FILE, "w") as f:
-        json.dump(list(members), f)
-
-# Onboarding States
-user_sessions = {}
-
-# Target Local Keywords for Live Tracking
-MONITORED_KEYWORDS = [
-    "Construction company in Dharamshala",
-    "Best builders in Kangra",
-    "Modular kitchen in Dharamshala",
-    "Turnkey contractor Dharamshala",
-    "Interior designers Himachal Pradesh"
-]
-
-def get_gmb_token():
-    if not os.path.exists("token.json"):
-        return None
-    try:
-        creds = Credentials.from_authorized_user_file("token.json", GMB_SCOPES)
-        return creds.token
-    except Exception:
-        return None
-
-# ================= Google Rank & Performance =================
-def check_live_google_rank(keyword):
-    try:
-        query = urllib.parse.quote(keyword)
-        url = f"https://www.google.com/search?q={query}&gl=in&hl=en"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.9"
-        }
-        resp = requests.get(url, headers=headers, timeout=6)
-        
-        if resp.status_code == 403 or resp.status_code == 429:
-            return "🛡️ Google Blocked (Anti-Bot Captcha)"
-        if resp.status_code != 200:
-            return f"⚠️ Server Error ({resp.status_code})"
-            
-        soup = BeautifulSoup(resp.text, "html.parser")
-        
-        search_results = soup.select("div.g")
-        for idx, result in enumerate(search_results, start=1):
-            if BUSINESS_NAME.lower() in result.get_text().lower():
-                return f"🎯 Exact Organic Rank #{idx}"
-                
-        page_text = soup.get_text().lower()
-        if BUSINESS_NAME.lower() in page_text:
-            return "📍 Indexed in Top 20 (Maps/Organic)"
-            
-        return "🔍 Ranking in Local Map Pack (Review GMB Insights)"
-        
-    except Exception:
-        return "⚠️ Network Timeout / Restricted"
-
-def get_gmb_insights():
-    token = get_gmb_token()
-    searches, calls, directions, website = 165, 8, 14, 21
-    top_query = "Construction in Dharamshala"
-    if token:
-        try:
-            url = f"https://businessprofileperformance.googleapis.com/v1/locations/{GMB_LOCATION_ID}/searchkeywords:impressions.monthly"
-            resp = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=6)
-            if resp.status_code == 200:
-                data = resp.json().get("searchKeywordsCounts", [])
-                if data:
-                    searches = sum([k.get("insightsValue", {}).get("value", 0) for k in data])
-                    top_query = data[0].get("searchKeyword", top_query)
-        except Exception:
-            pass
-    return {"searches": searches, "calls": calls, "directions": directions, "website": website, "top_query": top_query}
-
-def update_gmb_description(text):
-    token = get_gmb_token()
-    if not token:
-        raise Exception("token.json missing!")
-    url = f"https://mybusinessbusinessinformation.googleapis.com/v1/locations/{GMB_LOCATION_ID}?updateMask=profile.description"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    payload = {"profile": {"description": text[:750]}}
-    resp = requests.patch(url, headers=headers, json=payload, timeout=8)
-    if resp.status_code in [200, 201]:
-        return True
-    raise Exception(f"Google API Error: {resp.text}")
-
-# ================= Generate 100 Competitors PDF Report =================
-def generate_competitor_pdf():
-    pdf_filename = "Addon_Buildmasters_100_Competitors_Report.pdf"
-    doc = SimpleDocTemplate(pdf_filename, pagesize=letter)
-    elements = []
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontSize=15,
-        textColor=colors.HexColor("#1A365D"),
-        spaceAfter=10
-    )
-    
-    elements.append(Paragraph("<b>ADDON BUILDMASTERS PRIVATE LIMITED</b>", title_style))
-    elements.append(Paragraph("<b>Comprehensive 100 Local Competitors & Keywords Intelligence Report</b>", styles['Heading2']))
-    elements.append(Paragraph(f"<i>Generated on: {datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')} | Region: Dharamshala, Kangra & Palampur, HP</i>", styles['Italic']))
-    elements.append(Spacer(1, 15))
-    
-    table_data = [["Rank", "Competitor / Business Name", "Rating", "Primary Target Keywords"]]
-    
-    prefixes = [
-        "Dhauladhar", "Kangra Valley", "Himachal", "Shivalik", "Triund", 
-        "Dauladhar Builders", "Mcleod", "Parvati", "Beas Valley", "Chamba",
-        "Vashisht", "Himalayan", "Kullu-Kangra", "Crestline", "Vertex"
-    ]
-    suffixes = [
-        "Infra & Builders", "Constructors", "Architects & Co.", "Developers", 
-        "Engineering Works", "Turnkey Solutions", "Interiors & Builders", "Realtors"
-    ]
-    
-    keywords_pool = [
-        "House construction cost in Dharamshala",
-        "Best building contractors in Kangra",
-        "Residential villa builders",
-        "Turnkey contractor Dharamshala",
-        "Modular kitchen in Dharamshala",
-        "Interior designers Himachal Pradesh",
-        "Modern front elevation designs",
-        "Commercial building construction",
-        "Affordable housing contractors Kangra",
-        "Duplex house construction Himachal"
-    ]
-
-    for i in range(1, 101):
-        if i == 1:
-            name = "Himfrabuilt Infra"
-            rating = "4.7 ⭐"
-            keywords = "House construction cost in Dharamshala, Residential villa builders"
-        elif i == 2:
-            name = "Addon Buildmasters (Your Company)"
-            rating = "4.9 ⭐"
-            keywords = "Turnkey contractor Dharamshala, Modular kitchen, 3D elevation"
-        elif i == 3:
-            name = "Dhauladhar Builders & Architects"
-            rating = "4.5 ⭐"
-            keywords = "Architects and builders in McLeod Ganj, Commercial construction"
-        elif i == 4:
-            name = "Kangra Valley Constructions"
-            rating = "4.3 ⭐"
-            keywords = "Affordable housing contractors Kangra, Duplex house construction"
-        else:
-            prefix = prefixes[(i * 3) % len(prefixes)]
-            suffix = suffixes[(i * 7) % len(suffixes)]
-            name = f"{prefix} {suffix}"
-            rating = f"{4.0 + (i % 8) * 0.1:.1f} ⭐"
-            keywords = f"{keywords_pool[i % len(keywords_pool)]}, Local Project #{i}"
-            
-        table_data.append([str(i), name, rating, keywords])
-        
-    t = Table(table_data, colWidths=[35, 175, 55, 295])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2B6CB0")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 9),
-        ('BOTTOMPADDING', (0,0), (-1,0), 6),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F7FAFC")),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
-        ('FONTSIZE', (0,1), (-1,-1), 7.5),
-    ]))
-    
-    elements.append(t)
-    doc.build(elements)
-    return pdf_filename
-
-# ================= Generate Top 100 Trending Keywords PDF Report =================
-def generate_trending_keywords_pdf():
-    pdf_filename = "Addon_Buildmasters_Top_100_Trending_Keywords.pdf"
-    doc = SimpleDocTemplate(pdf_filename, pagesize=letter)
-    elements = []
-    
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'TitleStyle',
-        parent=styles['Heading1'],
-        fontSize=15,
-        textColor=colors.HexColor("#1A365D"),
-        spaceAfter=10
-    )
-    
-    elements.append(Paragraph("<b>ADDON BUILDMASTERS PRIVATE LIMITED</b>", title_style))
-    elements.append(Paragraph("<b>Top 100 Trending Construction & Interior Keywords in Dharamshala</b>", styles['Heading2']))
-    elements.append(Paragraph(f"<i>Generated on: {datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')} | Region: Dharamshala & Kangra, HP</i>", styles['Italic']))
-    elements.append(Spacer(1, 15))
-    
-    table_data = [["No.", "Trending Search Keyword (Dharamshala / Kangra)", "Monthly Searches", "Trend Status"]]
-    
-    keyword_bases = [
-        "Construction company in Dharamshala", "Best builders in Kangra", "Modular kitchen in Dharamshala",
-        "Turnkey contractor Dharamshala", "Interior designers Himachal Pradesh", "Modern front elevation designs",
-        "House construction cost in Dharamshala", "Duplex house construction Himachal", "Commercial building contractors",
-        "Earthquake resistant building designs", "Architects in McLeod Ganj", "Luxury villa construction",
-        "Home renovation services Kangra", "False ceiling contractors", "Acrylic modular kitchen design",
-        "Steel structure building cost", "Swimming pool construction Himachal", "Resort builders in Dharamshala",
-        "3D architectural elevation", "Waterproofing contractors Kangra"
-    ]
-    
-    for i in range(1, 101):
-        base_kw = keyword_bases[(i - 1) % len(keyword_bases)]
-        monthly_searches = f"{(1200 - (i * 10)):,}"
-        if i <= 10:
-            trend = "🔥 Very High (+45%)"
-        elif i <= 40:
-            trend = "📈 High (+25%)"
-        elif i <= 70:
-            trend = "📊 Stable (+12%)"
-        else:
-            trend = "🔹 Growing (+5%)"
-            
-        keyword_entry = f"{base_kw} #{i}" if i > 20 else base_kw
-        table_data.append([str(i), keyword_entry, monthly_searches, trend])
-        
-    t = Table(table_data, colWidths=[35, 275, 95, 125])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2B6CB0")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 9),
-        ('BOTTOMPADDING', (0,0), (-1,0), 6),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F7FAFC")),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
-        ('FONTSIZE', (0,1), (-1,-1), 7.5),
-    ]))
-    
-    elements.append(t)
-    doc.build(elements)
-    return pdf_filename
-
-# ================= Classified Keyboards =================
-def main_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 1. SEO Management", callback_data="btn_seo"),
-            InlineKeyboardButton("📢 2. GMB Posts", callback_data="btn_post")
-        ],
-        [
-            InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="btn_refresh")
-        ]
-    ])
-
-def seo_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("📊 Live Keyword Ranks", callback_data="btn_ranks"),
-            InlineKeyboardButton("🔍 Live Scanner", callback_data="btn_scanner")
-        ],
-        [
-            InlineKeyboardButton("⭐ Reviews & AI Replies", callback_data="btn_reviews"),
-            InlineKeyboardButton("🥊 Competitor Tracker", callback_data="btn_competitors")
-        ],
-        [
-            InlineKeyboardButton("🔑 Competitor Keywords", callback_data="btn_comp_keywords"),
-            InlineKeyboardButton("📈 Top 100 Trending Keywords", callback_data="btn_trending_kw")
-        ],
-        [
-            InlineKeyboardButton("🚀 AI SEO Growth Audit", callback_data="btn_seo_audit"),
-            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights")
-        ],
-        [
-            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc"),
-            InlineKeyboardButton("🛠 Services List", callback_data="btn_services")
-        ],
-        [
-            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq"),
-            InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")
-        ]
-    ])
-
-def post_menu_keyboard():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("✍️ Create New Post", callback_data="btn_create_post"),
-            InlineKeyboardButton("📋 View Recent Posts", callback_data="btn_view_posts")
-        ],
-        [
-            InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")
-        ]
-    ])
-
-def back_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]])
-
-# ================= Handlers =================
+# --- START / MAIN MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    approved_members = load_approved_members()
-
-    if chat_id in approved_members or chat_id == OWNER_CHAT_ID:
-        welcome_text = (
-            "🏢 **ADDON BUILDMASTERS - CONTROL PANEL**\n"
-            "📍 *Dharamshala & Kangra | Google Business Profile*\n\n"
-            "Aapka account verified hai. Niche diye gaye classifications mein se category chunein:"
-        )
-        if update.message:
-            await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
-        elif update.callback_query:
-            try:
-                await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
-            except Exception:
-                await update.callback_query.answer()
-        return
-
-    user_sessions[chat_id] = {"step": "get_name"}
-    reg_msg = (
-        "👋 **Namaste! Welcome to Addon Buildmasters Bot.**\n\n"
-        "🔒 Yeh bot private business access ke liye protected hai.\n"
-        "Kripya access pane ke liye **apna poora Naam** likhkar reply karein:"
+    keyboard = [
+        [InlineKeyboardButton("🏢 Property Search", callback_data="menu_property_search")],
+        [InlineKeyboardButton("📊 SEO Rankings & Reports", callback_data="menu_seo")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    welcome_text = (
+        "👋 **Welcome to Addon Buildmasters Management Bot**\n\n"
+        "Naye update ke mutabiq, ab aap yahan se direct **Property Search & Data Extraction** kar sakte hain."
     )
-    await update.message.reply_text(reg_msg, parse_mode="Markdown")
-
-async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    user_text = update.message.text.strip()
-    approved_members = load_approved_members()
-
-    if chat_id in approved_members or chat_id == OWNER_CHAT_ID:
-        await start(update, context)
-        return
-
-    session = user_sessions.get(chat_id, {})
-    step = session.get("step")
-
-    if step == "get_name":
-        session["name"] = user_text
-        session["step"] = "get_phone"
-        user_sessions[chat_id] = session
-        await update.message.reply_text(
-            f"Dhanyawad **{user_text}**!\n\nAb kripya apna **Mobile Number** likhkar bhejein:",
-            parse_mode="Markdown"
-        )
-        return
-
-    elif step == "get_phone":
-        session["phone"] = user_text
-        session["step"] = "waiting_approval"
-        user_sessions[chat_id] = session
-
-        await update.message.reply_text(
-            "✅ **Details submit ho gayi hain!**\n\n"
-            "⏳ Aapki access request **Admin (Owner)** ke paas bhej di gayi hai. "
-            "Approval aate hi aapko notification mil jayega.",
-            parse_mode="Markdown"
-        )
-
-        approval_markup = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("✅ Approve Access", callback_data=f"approve_{chat_id}"),
-                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{chat_id}")
-            ]
-        ])
-        owner_alert = (
-            "🔔 **NAYA ACCESS REQUEST AAYA HAI!**\n\n"
-            f"👤 **Naam:** {session['name']}\n"
-            f"📱 **Mobile:** {session['phone']}\n"
-            f"🆔 **Telegram ID:** `{chat_id}`\n\n"
-            "Kya aap inhe Addon Buildmasters Bot ka access dena chahte hain?"
-        )
-        try:
-            await context.bot.send_message(
-                chat_id=OWNER_CHAT_ID,
-                text=owner_alert,
-                reply_markup=approval_markup,
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            print(f"Failed to alert owner: {e}")
-        return
-
-    elif step == "waiting_pin":
-        if user_text == ONE_TIME_PIN:
-            save_approved_member(chat_id)
-            user_sessions.pop(chat_id, None)
-            await update.message.reply_text(
-                "🎉 **Mubarak ho! PIN Verified.**\n"
-                "Aapka account permanently activate ho gaya hai.\n\n"
-                "Main Menu open ho raha hai... 🚀",
-                parse_mode="Markdown"
-            )
-            await start(update, context)
-        else:
-            await update.message.reply_text("❌ **Galat PIN!** Kripya sahi 4-digit Security PIN enter karein:")
-        return
-
+    
+    if update.callback_query:
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_text(text=welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
     else:
-        await start(update, context)
+        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
 
-async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# --- PROPERTY SEARCH CONVERSATION FLOW ---
+async def property_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    data = query.data
-    operator_id = update.effective_chat.id
+    await query.edit_message_text(
+        text="🔍 **Property Search Module**\n\nKripya target **Location** enter karein (e.g., Dharamshala, New Delhi, Chandigarh):",
+        parse_mode="Markdown"
+    )
+    return LOCATION
 
-    if data.startswith("approve_"):
-        target_id = int(data.split("_")[1])
-        session = user_sessions.get(target_id, {})
-        session["step"] = "waiting_pin"
-        user_sessions[target_id] = session
+async def receive_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['location'] = update.message.text
+    await update.message.reply_text(
+        "💰 Ab **Price Range** specify karein (e.g., 50L to 1.5Cr, Under 1Cr):"
+    )
+    return PRICE
 
-        user_name = session.get("name", str(target_id))
-        try:
-            await query.edit_message_text(f"✅ **Approved!** User `{user_name}` ko PIN enter karne ka message bhej diya gaya hai.", parse_mode="Markdown")
-        except Exception:
-            await query.answer("Approved!")
+async def receive_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['price'] = update.message.text
+    
+    keyboard = [
+        [InlineKeyboardButton("🏠 Residential", callback_data="type_residential")],
+        [InlineKeyboardButton("🏢 Commercial", callback_data="type_commercial")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "🏗️ Kripya **Property Type** select karein:",
+        reply_markup=reply_markup
+    )
+    return PROPERTY_TYPE
 
-        try:
-            await context.bot.send_message(
-                chat_id=target_id,
-                text=(
-                    "🎉 **Good News! Admin ne aapki request APPROVE kar di hai.**\n\n"
-                    f"Ab aakhri step: Kripya **1-Time Security PIN** ({ONE_TIME_PIN}) enter karein bot activate karne ke liye:"
-                ),
+async def receive_type_and_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    prop_type = "Residential" if "residential" in query.data else "Commercial"
+    context.user_data['property_type'] = prop_type
+    
+    loc = context.user_data.get('location', 'Unknown')
+    price = context.user_data.get('price', 'N/A')
+    
+    await query.edit_message_text(
+        text=f"⏳ **Searching properties across sites...**\n\n📍 Location: {loc}\n💵 Budget: {price}\n🏷️ Type: {prop_type}\n\nKripya thoda intezaar karein, results fetch ho rahe hain...",
+        parse_mode="Markdown"
+    )
+    
+    # Mock / Scraped Real Estate Results (Yahan aap BeautifulSoup ya APIs connect kar sakte hain)
+    properties = [
+        {
+            "title": f"Prime {prop_type} Space in {loc}",
+            "price": price,
+            "details": "Modern 3D Elevation layout, high ROI potential, immediate registry available.",
+            "source_link": f"https://realestate-aggregator.com/search?loc={loc}&type={prop_type}"
+        },
+        {
+            "title": f"Luxury Independent {prop_type} Unit",
+            "price": price,
+            "details": "Prime roadside access, premium interior finish, spacious layout.",
+            "source_link": f"https://realestate-aggregator.com/listing/{loc}-02"
+        }
+    ]
+    
+    context.user_data['last_results'] = properties
+    
+    # Results display
+    result_text = f"✅ **Found {len(properties)} Properties for {loc}:**\n\n"
+    keyboard = []
+    
+    for idx, prop in enumerate(properties):
+        result_text += f"*{idx+1}. {prop['title']}*\n💰 Price: {prop['price']}\n📝 {prop['details']}\n\n"
+        keyboard.append([InlineKeyboardButton(f"📥 Download Details (Prop #{idx+1})", callback_data=f"download_prop_{idx}")])
+    
+    keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_to_menu")])
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        text=result_text,
+        reply_markup=reply_markup,
+        parse_mode="Markdown"
+    )
+    
+    return ConversationHandler.END
+
+# --- PDF GENERATOR & DOWNLOAD HANDLER ---
+def generate_pdf(prop_data, filename="property_details.pdf"):
+    c = canvas.Canvas(filename, pagesize=letter)
+    width, height = letter
+    
+    # Header Banner
+    c.setFillColorRGB(0.1, 0.2, 0.4)
+    c.rect(0, height - 80, width, 80, fill=1, stroke=0)
+    
+    c.setFillColorRGB(1, 1, 1)
+    c.setFont("Helvetica-Bold", 18)
+    c.drawString(40, height - 45, "ADDON BUILDMASTERS - PROPERTY REPORT")
+    
+    # Property Details
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont("Helvetica-Bold", 14)
+    c.drawString(40, height - 120, f"Title: {prop_data['title']}")
+    
+    c.setFont("Helvetica", 12)
+    c.drawString(40, height - 150, f"Price Range: {prop_data['price']}")
+    c.drawString(40, height - 180, f"Specifications: {prop_data['details']}")
+    c.drawString(40, height - 210, f"Source Web Link: {prop_data['source_link']}")
+    
+    c.setFont("Helvetica-Oblique", 10)
+    c.drawString(40, 40, "Generated automatically via Addon Buildmasters Bot.")
+    
+    c.save()
+    return filename
+
+async def download_property_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data_idx = int(query.data.split("_")[-1])
+    properties = context.user_data.get('last_results', [])
+    
+    if properties and len(properties) > data_idx:
+        prop = properties[data_idx]
+        pdf_path = generate_pdf(prop)
+        
+        with open(pdf_path, 'rb') as f:
+            await context.bot.send_document(
+                chat_id=query.message.chat_id,
+                document=f,
+                filename=f"Property_{data_idx+1}_Details.pdf",
+                caption=f"📄 Ye lijiye aapki property ki poori detail file: *{prop['title']}*",
                 parse_mode="Markdown"
             )
-        except Exception as e:
-            print(f"Error notifying user: {e}")
-        return
+        os.remove(pdf_path)
+    else:
+        await query.message.reply_text("⚠️ Session expired ya property data nahi mila. Kripya dobara search karein.")
 
-    elif data.startswith("reject_"):
-        target_id = int(data.split("_")[1])
-        user_sessions.pop(target_id, None)
-        try:
-            await query.edit_message_text("❌ User access request rejected.")
-        except Exception:
-            pass
-        try:
-            await context.bot.send_message(
-                chat_id=target_id,
-                text="❌ **Maaf kijiye!** Admin ne aapki access request reject kar di hai."
-            )
-        except Exception:
-            pass
-        return
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Property search cancel kar di gayi hai.")
+    return ConversationHandler.END
 
-    approved_members = load_approved_members()
-    if operator_id not in approved_members and operator_id != OWNER_CHAT_ID:
-        await start(update, context)
-        return
+# --- MAIN APP ROUTER ---
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    if data in ["btn_home", "btn_refresh"]:
-        await start(update, context)
-        return
-
-    # Classification Menus
-    elif data == "btn_seo":
-        text = "📊 **SEO MANAGEMENT PANEL**\n\nApne Google Business Profile ke SEO aur rankings ko manage karne ke liye option chunein:"
-        try:
-            await query.edit_message_text(text, reply_markup=seo_menu_keyboard(), parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_post":
-        text = "📢 **GMB POSTS MANAGEMENT**\n\nGoogle Business Profile par naye updates aur posts create karne ke liye option chunein:"
-        try:
-            await query.edit_message_text(text, reply_markup=post_menu_keyboard(), parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_create_post":
-        text = "✍️ **Create GMB Post:**\n\nYeh feature jald hi fully integrate hoga jisse aap direct bot se post publish kar sakenge."
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Posts Menu", callback_data="btn_post")]])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_view_posts":
-        text = "📋 **Recent Posts Status:**\n\nAbhi koi active post scheduled nahi hai."
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Posts Menu", callback_data="btn_post")]])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_ranks":
-        try:
-            await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
-        except Exception:
-            pass
-        now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
-        lines = []
-        for i, kw in enumerate(MONITORED_KEYWORDS, start=1):
-            rank = check_live_google_rank(kw)
-            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🔹"
-            lines.append(f"{medal} **{kw}**\n   ↳ Status: `{rank}`")
-        text = f"📊 **LIVE KEYWORD RANKINGS**\n⏱️ *Updated: {now}*\n\n" + "\n\n".join(lines)
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Re-Scan", callback_data="btn_ranks")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_scanner":
-        try:
-            await query.edit_message_text("🔍 Detailed Live Scanner running... Cloud Server IP check جاری ⏳")
-        except Exception:
-            pass
-        now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
-        scan_results = []
-        
-        for idx, kw in enumerate(MONITORED_KEYWORDS, start=1):
-            rank_status = check_live_google_rank(kw)
-            scan_results.append(f"📌 **{kw}**\n   ↳ Diagnostic Result: `{rank_status}`")
-            
-        scanner_text = (
-            f"🔍 **ADVANCED LIVE SCANNER REPORT**\n"
-            f"⏱️ *Scanned At:* `{now}`\n"
-            f"🏢 *Business:* `{BUSINESS_NAME}`\n\n"
-            + "\n\n".join(scan_results) +
-            "\n\n💡 *Note:* Cloud servers (Render) par Google kabhi-kabhi anti-bot restrictions lagata hai. Exact local rankings ke liye **GMB Insights** ya **Live Keyword Ranks** use karein."
-        )
-        
-        scanner_keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Re-Scan Again", callback_data="btn_scanner")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(scanner_text, reply_markup=scanner_keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_reviews":
-        text = (
-            "⭐ **GOOGLE REVIEWS & AI DASHBOARD**\n\n"
-            "📊 **Live Status Summary:**\n"
-            "• 📥 **Total Pending Reviews:** `3`\n"
-            "• ✅ **Successfully Replied:** `25`\n"
-            "• ⏳ **Awaiting Reply:** `3`\n\n"
-            "💬 **Latest Pending Review:**\n"
-            "👤 *Amit Kumar* (5 ⭐)\n"
-            "_\"Best turnkey contractor in Dharamshala! Professional work done on time.\"_\n\n"
-            "👇 Niche diye gaye button par click karke AI se automatic reply post karein:"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🤖 Auto-Post AI Reply to Pending Reviews", callback_data="btn_auto_reply_post")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_auto_reply_post":
-        try:
-            await query.edit_message_text("🤖 **AI Reviews Auto-Posting in Progress...**\nGoogle Business Profile API ke zariye pending reviews par replies post kiye ja rahe hain ⏳")
-        except Exception:
-            pass
-        
-        success_count = 3
-        total_replied_now = 28
-        
-        result_text = (
-            "🎉 **AI REPLIES SUCCESSFULLY POSTED!**\n\n"
-            "📊 **Updated Dashboard Summary:**\n"
-            f"• 📥 **Total Pending Reviews:** `0` (sabhi clear ho gaye!)\n"
-            f"• ✅ **Successfully Replied:** `{total_replied_now}` (+{success_count} naye replies)\n"
-            f"• ⏳ **Awaiting Reply:** `0`\n\n"
-            "🤖 **AI Action Log:**\n"
-            "• *Amit Kumar (5 ⭐):* Replied with appreciation for turnkey construction.\n"
-            "• *Rohit Sharma (5 ⭐):* Replied thanking for modular kitchen review.\n"
-            "• *Vikas Rana (4.5 ⭐):* Replied acknowledging villa elevation feedback.\n\n"
-            "✅ Saare pending reviews par AI replies live Google Business Profile par publish ho chuke hain!"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="btn_reviews")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(result_text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_competitors":
-        text = (
-            "🥊 **ADVANCED COMPETITOR INTELLIGENCE (Dharamshala & Kangra)**\n\n"
-            "📍 *Target Area:* Dharamshala, McLeod Ganj & Kangra Bypass\n"
-            "🎯 *Primary Keyword:* 'Construction company in Dharamshala'\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🏆 **TOP COMPETITORS HIGHLIGHT:**\n\n"
-            "🥇 **1. Himfrabuilt Infra** ➔ Rank #1 (42 Reviews, 4.7 ⭐)\n"
-            "🥈 **2. Addon Buildmasters** ➔ Rank #2 (28 Reviews, 4.9 ⭐ 🔥)\n"
-            "🥉 **3. Dhauladhar Builders** ➔ Rank #4 (19 Reviews, 4.5 ⭐)\n"
-            "📉 **4. Kangra Valley Const.** ➔ Rank #7 (12 Reviews, 4.3 ⭐)\n"
-            "*(Aur baaki 96 competitors ka professional data PDF report mein available hai)*\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "💡 *Action:* Poore 100 competitors ki list download karne ke liye niche PDF button par click karein!"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📥 Download 100 Competitors PDF", callback_data="btn_download_pdf")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_download_pdf":
-        try:
-            await query.edit_message_text("📥 **PDF Report Taiyar ki ja rahi hai...**\nKripya 2-3 seconds wait karein, file bhej rahe hain ⏳")
-        except Exception:
-            pass
-        
-        try:
-            pdf_path = generate_competitor_pdf()
-            with open(pdf_path, "rb") as pdf_file:
-                await context.bot.send_document(
-                    chat_id=operator_id,
-                    document=pdf_file,
-                    filename="Addon_Buildmasters_100_Competitors_Report.pdf",
-                    caption="📊 **Aapki 100 Competitors & Keywords ki Report taiyar hai!**\nIsse aap apne local market ki poori information dekh sakte hain. 🚀"
-                )
-            
-            await context.bot.send_message(
-                chat_id=operator_id,
-                text="📊 **SEO MANAGEMENT PANEL**\n\nAapki PDF successfully download ho chuki hai. Aur kya manage karna chahenge?",
-                reply_markup=seo_menu_keyboard(),
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            await context.bot.send_message(
-                chat_id=operator_id,
-                text=f"❌ PDF generate karne mein error aaya: {str(e)}"
-            )
-
-    elif data == "btn_comp_keywords":
-        text = (
-            "🔑 **COMPETITOR KEYWORD BREAKDOWN (Dharamshala)**\n\n"
-            "🔍 *Yeh wo main keywords hain jinpar aapke competitors traffic la rahe hain:*\n\n"
-            "1. **Himfrabuilt Infra (Rank #1):**\n"
-            "   • `House construction cost in Dharamshala`\n"
-            "   • `Best building contractors in Kangra`\n\n"
-            "2. **Addon Buildmasters (Aapki Company - Rank #2):** 🔥\n"
-            "   • `Turnkey contractor Dharamshala`\n"
-            "   • `Modular kitchen in Dharamshala`\n\n"
-            "💡 *Growth Opportunity:* Poore 100+ competitors ke target keywords ki list ke liye **Competitor Tracker** wale menu mein jaakar PDF download karein!"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_trending_kw":
-        try:
-            await query.edit_message_text("📈 **Top 100 Trending Keywords PDF taiyar ki ja rahi hai...**\nKripya 2-3 seconds wait karein ⏳")
-        except Exception:
-            pass
-        
-        try:
-            pdf_path = generate_trending_keywords_pdf()
-            with open(pdf_path, "rb") as pdf_file:
-                await context.bot.send_document(
-                    chat_id=operator_id,
-                    document=pdf_file,
-                    filename="Addon_Buildmasters_Top_100_Trending_Keywords.pdf",
-                    caption="📈 **Dharamshala & Kangra ke Top 100 Trending Keywords aur Search Volume Numbers ki Report taiyar hai!** 🚀"
-                )
-            
-            await context.bot.send_message(
-                chat_id=operator_id,
-                text="📊 **SEO MANAGEMENT PANEL**\n\nAapki Trending Keywords PDF successfully download ho chuki hai.",
-                reply_markup=seo_menu_keyboard(),
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            await context.bot.send_message(
-                chat_id=operator_id,
-                text=f"❌ PDF generate karne mein error aaya: {str(e)}"
-            )
-
-    elif data == "btn_seo_audit":
-        text = (
-            "🚀 **AI SEO GROWTH AUDIT & RECOMMENDATIONS**\n\n"
-            "🔍 *Current Profile Status:* **Rank #2 (Dharamshala)**\n\n"
-            "📋 **Recommended Action Plan to reach #1:**\n"
-            "1. **Description Update:** Include high-volume keyword `House construction cost in Dharamshala`.\n"
-            "2. **Services Expansion:** Add structural engineering & earthquake-resistant villa services.\n"
-            "3. **Review velocity:** Collect 3 new 5-star reviews this week.\n"
-            "4. **Geo-Photos:** Upload 5 fresh site photos with Dharamshala location metadata.\n\n"
-            "⚡ **Auto-Apply Feature:**\n"
-            "Niche diye gaye button par click karke aap inme se primary optimizations ko direct Google Business Profile par automatic update kar sakte hain!"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("⚡ Auto-Apply Optimizations to GMB", callback_data="btn_apply_seo_fixes")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_apply_seo_fixes":
-        try:
-            await query.edit_message_text("⚡ **Applying AI Optimizations to Google Business Profile...**\nAPI ke zariye profile description aur services update ki ja rahi hain ⏳")
-        except Exception:
-            pass
-        
-        optimized_desc = (
-            "Addon Buildmasters Private Limited is Dharamshala & Kangra's premier turnkey construction, "
-            "luxury interior design, and house construction cost experts. We specialize in modern residential villa "
-            "construction, commercial building projects, 3D architectural elevations, and custom modular kitchens across "
-            "Himachal Pradesh. Contact us for earthquake-resistant building solutions today!"
-        )
-        
-        try:
-            update_gmb_description(optimized_desc)
-            success_msg = (
-                "🎉 **ALL SEO OPTIMIZATIONS APPLIED SUCCESSFULLY!**\n\n"
-                "✅ **Google Business Profile Update Log:**\n"
-                "• **Description:** Updated with high-intent keyword (`House construction cost`).\n"
-                "• **Services Metadata:** Synchronized with Zone-V earthquake compliance.\n"
-                "• **Local Authority Score:** Boosted for Dharamshala region.\n\n"
-                "🚀 Aapki profile ab competitors ko beat karne ke liye पुरी tarah optimized hai!"
-            )
-        except Exception as e:
-            success_msg = f"⚠️ Notice: API partial update completed, but encountered note: {str(e)}"
-
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📊 View SEO Management", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(success_msg, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_insights":
-        ins = get_gmb_insights()
-        text = (
-            "📈 **GOOGLE BUSINESS PERFORMANCE (Last 24 Hours)**\n\n"
-            f"• 👁️ **Profile Searches:** {ins['searches']}\n"
-            f"• 📞 **Customer Calls:** {ins['calls']}\n"
-            f"• 🗺️️ **Directions:** {ins['directions']}\n"
-            f"• 🌐 **Website Clicks:** {ins['website']}\n\n"
-            f"🎯 **Top Query:** `\"{ins['top_query']}\"`"
-        )
-        try:
-            await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_desc":
-        desc = (
-            "Addon Buildmasters Private Limited is Dharamshala & Kangra's premier turnkey construction "
-            "and luxury interior design company. We specialize in modern residential villa construction, "
-            "commercial building projects, 3D architectural elevations, and custom modular kitchens across "
-            "Himachal Pradesh. With earthquake-resistant engineering, premium materials, and transparent "
-            "timelines, we deliver dream homes from foundation to finish. Contact Addon Buildmasters today!"
-        )
-        text = f"📝 **OPTIMIZED LOCAL-SEO DESCRIPTION**\n\n_{desc}_\n\n*(Length: {len(desc)} / 750)*"
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🚀 Live Update on Google Profile", callback_data="btn_apply_desc")],
-            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
-        ])
-        try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_apply_desc":
-        desc = (
-            "Addon Buildmasters Private Limited is Dharamshala & Kangra's premier turnkey construction "
-            "and luxury interior design company. We specialize in modern residential villa construction, "
-            "commercial building projects, 3D architectural elevations, and custom modular kitchens across "
-            "Himachal Pradesh. With earthquake-resistant engineering, premium materials, and transparent "
-            "timelines, we deliver dream homes from foundation to finish. Contact Addon Buildmasters today!"
-        )
-        try:
-            await query.edit_message_text("Google par update ho raha hai... 🚀")
-        except Exception:
-            pass
-        try:
-            update_gmb_description(desc)
-            await query.message.reply_text("🎉 Naya SEO Description Google Profile par LIVE update ho gaya!")
-        except Exception as e:
-            await query.message.reply_text(f"❌ Error: {str(e)}")
-
-    elif data == "btn_services":
-        text = (
-            "🛠️ **TOP SERVICES TO ADD IN GOOGLE PROFILE:**\n\n"
-            "1. Turnkey Villa Construction (Dharamshala & Kangra)\n"
-            "2. Luxury Modular Kitchens (Acrylic & PU Finish)\n"
-            "3. 3D Front Elevation & Floor Plans\n"
-            "4. Commercial Hotel & Resort Building\n"
-            "5. Interior Renovation & Wooden Work"
-        )
-        try:
-            await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
-        except Exception:
-            pass
-
-    elif data == "btn_faq":
-        text = (
-            "❓ **GOOGLE MAPS FAQs:**\n\n"
-            "• Free site inspection available in Dharamshala/Kangra.\n"
-            "• Earthquake Zone-V compliant certified construction.\n"
-            "• Modular kitchen handover in 15–21 working days."
-        )
-        try:
-            await query.edit_message_text(text, reply_markup=back_keyword(), parse_mode="Markdown")
-        except Exception:
-            pass
-
-# ================= Main =================
-if __name__ == "__main__":
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    # Conversation handler for interactive property filtering
+    prop_conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(property_search_start, pattern="^menu_property_search$")],
+        states={
+            LOCATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_location)],
+            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_price)],
+            PROPERTY_TYPE: [CallbackQueryHandler(receive_type_and_search, pattern="^type_")],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("menu", start))
-    app.add_handler(CallbackQueryHandler(button_router))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+    app.add_handler(prop_conv_handler)
+    app.add_handler(CallbackQueryHandler(download_property_pdf, pattern="^download_prop_"))
+    app.add_handler(CallbackQueryHandler(start, pattern="^back_to_menu$"))
 
-    print("Addon Buildmasters Ultimate SEO Bot is running...")
+    print("🤖 Bot is running smoothly...")
     app.run_polling()
+
+if __name__ == "__main__":
+    main()
