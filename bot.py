@@ -10,6 +10,8 @@ from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
+    MessageHandler,
+    filters,
     ContextTypes,
 )
 from google.oauth2.credentials import Credentials
@@ -18,8 +20,14 @@ from google.oauth2.credentials import Credentials
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYdyukSsJiDOimmtSYJteM8")
 GMB_LOCATION_ID = "17965482236175056297"
 BUSINESS_NAME = "Addon Buildmasters"
-OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "8430356644"))  # Apna numeric chat ID dalein
+
+# 4-Digit Security PIN (Aap ise yahan change kar sakte hain)
+SECURITY_PIN = os.getenv("BOT_PIN", "1704")
+
 GMB_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
+
+# Set to store verified users: {chat_id}
+authenticated_users = set()
 
 # Target Local Keywords for Live Tracking
 MONITORED_KEYWORDS = [
@@ -29,9 +37,6 @@ MONITORED_KEYWORDS = [
     "Turnkey contractor Dharamshala",
     "Interior designers Himachal Pradesh"
 ]
-
-# Simple 5-minute memory cache to keep bot super fast
-CACHE = {"ranks": None, "time": None}
 
 def get_gmb_token():
     if not os.path.exists("token.json"):
@@ -103,9 +108,9 @@ def update_gmb_description(text):
     resp = requests.patch(url, headers=headers, json=payload, timeout=8)
     if resp.status_code in [200, 201]:
         return True
-    raise Exception(f"Google API: {resp.text}")
+    raise Exception(f"Google API Error: {resp.text}")
 
-# ================= Clean Menu UI Keyboards =================
+# ================= Clean Keyboards =================
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -119,36 +124,83 @@ def main_menu_keyboard():
         [
             InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq"),
             InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="btn_refresh")
+        ],
+        [
+            InlineKeyboardButton("🔒 Lock Session", callback_data="btn_lock")
         ]
     ])
 
 def back_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]])
 
+# ================= Authentication Check =================
+def is_authenticated(chat_id):
+    return chat_id in authenticated_users
+
 # ================= Handlers =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    # Agar user pehle se verify nahi hai
+    if not is_authenticated(chat_id):
+        text = (
+            "🔒 **ACCESS RESTRICTED - ADDON BUILDMASTERS**\n\n"
+            "Is bot ko use karne ke liye kripya **4-Digit Security PIN** enter karein:"
+        )
+        if update.message:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(text, parse_mode="Markdown")
+        return
+
+    # Verified User Menu
     welcome_text = (
         "🏢 **ADDON BUILDMASTERS - CONTROL PANEL**\n"
         "📍 *Dharamshala & Kangra | Google Business Profile*\n\n"
-        "Aap niche diye gaye simple options se apne business ki ranking aur SEO manage kar sakte hain:"
+        "Neeche diye gaye options se live ranking aur SEO manage karein:"
     )
     if update.message:
         await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
     elif update.callback_query:
         await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
 
+async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    user_input = update.message.text.strip()
+    
+    # PIN Verification check
+    if not is_authenticated(chat_id):
+        if user_input == SECURITY_PIN:
+            authenticated_users.add(chat_id)
+            await update.message.reply_text("✅ **PIN Verified! Access Granted.**\n\nMain Menu open ho raha hai... 🚀", parse_mode="Markdown")
+            await start(update, context)
+        else:
+            await update.message.reply_text("❌ **Galat PIN!** Kripya sahi 4-digit PIN enter karein:")
+        return
+
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    chat_id = update.effective_chat.id
+    
+    if not is_authenticated(chat_id):
+        await start(update, context)
+        return
+        
     data = query.data
     
     # HOME
     if data in ["btn_home", "btn_refresh"]:
         await start(update, context)
         
+    # LOCK
+    elif data == "btn_lock":
+        authenticated_users.discard(chat_id)
+        await query.edit_message_text("🔒 **Bot Locked.** Dobara use karne ke liye /start dabayein aur PIN enter karein.")
+        
     # 1. LIVE KEYWORD RANKS
     elif data == "btn_ranks":
-        await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
+        await query.edit_message_text("🔍 Google Search & Maps live scan ho raha hai... ⏳")
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
         
         lines = []
@@ -245,36 +297,14 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
 
-# ================= Daily 9:00 AM Automated Job =================
-async def daily_morning_report(context: ContextTypes.DEFAULT_TYPE):
-    ins = get_gmb_insights()
-    now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y')
-    report = (
-        f"☀️ **GOOD MORNING ADDON BUILDMASTERS!**\n"
-        f"📅 *Daily Performance Summary ({now})*\n\n"
-        f"• 👁️ **Profile Views:** {ins['searches']}\n"
-        f"• 📞 **Calls Received:** {ins['calls']}\n"
-        f"• 🗺️ **Maps Directions:** {ins['directions']}\n"
-        f"• 🎯 **Top Query:** `\"{ins['top_query']}\"`\n\n"
-        "Live Keyword Ranks check karne ke liye bot open karein: /start"
-    )
-    try:
-        await context.bot.send_message(chat_id=OWNER_CHAT_ID, text=report, parse_mode="Markdown")
-    except Exception as e:
-        print(f"Schedule error: {e}")
-
 # ================= Main =================
 if __name__ == "__main__":
     app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     
-    # 9:00 AM IST Auto-Report
-    ist = pytz.timezone("Asia/Kolkata")
-    app.job_queue.run_daily(daily_morning_report, time=datetime.time(hour=9, minute=0, tzinfo=ist))
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("menu", start))
-    app.add_handler(CommandHandler("report", start))
     app.add_handler(CallbackQueryHandler(button_router))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     
-    print("Addon Buildmasters Simple & Fast Bot is running...")
+    print("Addon Buildmasters PIN Protected Bot is running...")
     app.run_polling()
