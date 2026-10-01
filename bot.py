@@ -18,7 +18,7 @@ from google.oauth2.credentials import Credentials
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYdyukSsJiDOimmtSYJteM8")
 GMB_LOCATION_ID = "17965482236175056297"
 BUSINESS_NAME = "Addon Buildmasters"
-OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))  # Apna numeric chat ID dalein
+OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "8430356644"))  # Apna numeric chat ID dalein
 GMB_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
 
 # Target Local Keywords for Live Tracking
