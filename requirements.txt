@@ -1,10 +1,2 @@
-Server-Side Rendering (SSR)
-Clean & SEO-Friendly URLs
-Dynamic Meta Tags
-XML Sitemap & Robots.txt
-Google Search Console & GA4 Integration
-Page Speed & Caching
-Image Optimization & CDN
-Mobile Responsiveness & HTTPS SSL
-Schema Markup
-Canonical Tags
+flask
+python-telegram-bot
