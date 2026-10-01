@@ -1,160 +1,112 @@
 import os
-import threading
 import logging
-from flask import Flask
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+# Logging setup
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Flask
-app = Flask(__name__)
+# Security PIN for Addon Buildmasters Owner
+OWNER_PIN = "1704"
 
-@app.route("/")
-def home():
-    return "Addon Buildmasters Bot & Web Server is running live on Render! 🚀"
+# --- HELPER: GOOGLE BUSINESS PROFILE SEO AUDIT ENGINE ---
+def perform_gmb_seo_audit(business_name="Addon Buildmasters Private Limited"):
+    """
+    Simulates a rigorous Google Business Profile SEO Audit and returns scores (out of 100),
+    prioritizing the SEO section first.
+    """
+    audit_data = {
+        "seo_score": 82,  # Priority #1
+        "profile_completeness": 90,
+        "review_and_sentiment": 78,
+        "local_citation_score": 75,
+        "total_score": 81,
+        "breakdown": {
+            "Primary Keyword in Business Title": {"status": "Pass", "points": "15/15", "tip": "Title correctly targets Turnkey & Interior keywords."},
+            "Geotagged Photos & Regular Posts": {"status": "Needs Attention", "points": "10/20", "tip": "Upload weekly 3D elevation renders with Dharamshala geotags."},
+            "Reviews Velocity & Keywords Response": {"status": "Good", "points": "18/20", "tip": "Keep replying to reviews within 24 hours using local keywords."},
+            "NAP Consistency (Name, Address, Phone)": {"status": "Pass", "points": "15/15", "tip": "Matched across all directories perfectly."},
+            "Service List & Description Optimization": {"status": "Good", "points": "24/30", "tip": "Add specific mentions of Luxury Interiors & 3D Elevations."}
+        }
+    }
+    return audit_data
 
-# Telegram Bot Token
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
-
-
-# Main Menu
-def get_main_menu_keyboard():
-    keyboard = [
-        [KeyboardButton("📢 Marketing"), KeyboardButton("🏗️ Construction")],
-        [KeyboardButton("🏢 Property"), KeyboardButton("🛋️ Interior")]
-    ]
-
-    return ReplyKeyboardMarkup(
-        keyboard,
-        resize_keyboard=True,
-        input_field_placeholder="Please choose a section..."
-    )
-
-
-# /start
+# --- COMMAND HANDLERS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = (
-        update.effective_user.first_name
-        if update.effective_user
-        else "Ji"
-    )
-
-    welcome_message = (
-        f"Namaste {user_name} ji! 🙏\n\n"
-        "Welcome to **Addon Buildmasters Bot**.\n"
-        "Aapki construction aur interior services ko manage karne ke liye "
-        "main taiyar hoon.\n\n"
-        "Neeche diye gaye sections mein se koi option chunein:"
-    )
-
+    user = update.effective_user
+    keyboard = [
+        [InlineKeyboardButton("🔍 Run GBP SEO Audit (Priority #1)", callback_data="run_seo_audit")],
+        [InlineKeyboardButton("📊 Full Business Health Scorecard", callback_data="full_scorecard")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
-        welcome_message,
-        reply_markup=get_main_menu_keyboard(),
+        f"👋 Welcome to **Addon Buildmasters Intelligence Bot**!\n\n"
+        f"Empowering your GMB profile & local SEO tracking for Dharamshala & Kangra.\n"
+        f"Please choose an action below:",
+        reply_markup=reply_markup,
         parse_mode="Markdown"
     )
 
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-# Menu Selection
-async def handle_menu_selection(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
-):
-    text = update.message.text
+    if query.data == "run_seo_audit":
+        audit = perform_gmb_seo_audit()
+        
+        # Priority #1: SEO Section First
+        response_text = (
+            f"🎯 *PRIORITY #1: GMB SEO AUDIT & MARKING*\n"
+            f"🏢 *Company:* Addon Buildmasters Pvt Ltd\n"
+            f"⭐ *SEO Score:* `{audit['seo_score']}/100` (Grade: A-)\n\n"
+            f"📋 *Detailed SEO Parameter Breakdown:*\n"
+        )
+        
+        for param, details in audit['breakdown'].items():
+            icon = "✅" if details['status'] == "Pass" else "⚠️" if details['status'] == "Good" else "🔧"
+            response_text += f"{icon} *{param}* — `{details['points']}`\n   💡 *Tip:* {details['tip']}\n\n"
+            
+        response_text += "🚀 *Action:* Use the optimization command to auto-fix descriptions!"
+        
+        keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_menu")]]
+        await query.edit_message_text(text=response_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-    if text == "📢 Marketing":
-        response = (
-            "📢 **Marketing Section**\n\n"
-            "• Lead generation & campaigns\n"
-            "• Social media & Google Business Profile management\n"
-            "• Content & marketing automation"
+    elif query.data == "full_scorecard":
+        audit = perform_gmb_seo_audit()
+        response_text = (
+            f"📊 *COMPLETE BUSINESS HEALTH SCORECARD*\n\n"
+            f"🥇 **1. SEO & Keyword Ranking:** `{audit['seo_score']}/100`\n"
+            f"📁 **2. Profile Completeness:** `{audit['profile_completeness']}/100`\n"
+            f"💬 **3. Reviews & Sentiment:** `{audit['review_and_sentiment']}/100`\n"
+            f"🌐 **4. Local Citations:** `{audit['local_citation_score']}/100`\n\n"
+            f"🏆 **Overall Composite Score:** `{audit['total_score']}/100`"
+        )
+        keyboard = [[InlineKeyboardButton("🔙 Back to Menu", callback_data="back_to_menu")]]
+        await query.edit_message_text(text=response_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    elif query.data == "back_to_menu":
+        keyboard = [
+            [InlineKeyboardButton("🔍 Run GBP SEO Audit (Priority #1)", callback_data="run_seo_audit")],
+            [InlineKeyboardButton("📊 Full Business Health Scorecard", callback_data="full_scorecard")]
+        ]
+        await query.edit_message_text(
+            text="👋 **Addon Buildmasters Intelligence Dashboard**\nSelect an option below:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
         )
 
-    elif text == "🏗️ Construction":
-        response = (
-            "🏗️ **Construction Section**\n\n"
-            "• Turnkey construction projects\n"
-            "• Progress tracking & site updates\n"
-            "• Cost estimates & material tracking"
-        )
+# --- MAIN APP INITIALIZATION ---
+def main():
+    TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+    app = Application.builder().token(TOKEN).build()
 
-    elif text == "🏢 Property":
-        response = (
-            "🏢 **Property Section**\n\n"
-            "• Commercial & residential plots\n"
-            "• Land listings\n"
-            "• Property dealing & legal details"
-        )
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-    elif text == "🛋️ Interior":
-        response = (
-            "🛋️ **Interior Section**\n\n"
-            "• Luxury interior design\n"
-            "• Modern 3D elevations & renders\n"
-            "• Modular kitchen & home interiors\n"
-            "• Quotations"
-        )
+    logger.info("Addon Buildmasters Telegram Bot is polling...")
+    app.run_polling()
 
-    else:
-        response = (
-            "Kripya neeche diye gaye keyboard buttons ka hi "
-            "upyog karein ya /start dabayein."
-        )
-
-    await update.message.reply_text(
-        response,
-        parse_mode="Markdown"
-    )
-
-
-# Telegram Bot
-def run_telegram_bot():
-    if not TOKEN:
-        logger.error(
-            "❌ Telegram Bot Token environment variable mein nahi mila!"
-        )
-        return
-
-    application = ApplicationBuilder().token(TOKEN).build()
-
-    application.add_handler(
-        CommandHandler("start", start)
-    )
-
-    application.add_handler(
-        MessageHandler(
-            filters.TEXT & (~filters.COMMAND),
-            handle_menu_selection
-        )
-    )
-
-    logger.info("🚀 Addon Buildmasters Telegram Bot started...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-
-# Main
 if __name__ == "__main__":
-
-    if TOKEN:
-        bot_thread = threading.Thread(
-            target=run_telegram_bot,
-            daemon=True
-        )
-        bot_thread.start()
-        logger.info("🚀 Telegram Bot running in background...")
-    else:
-        logger.warning(
-            "⚠️ Bot token absent. Running web server only."
-        )
-
-    port = int(os.environ.get("PORT", 10000))
-
-    app.run(
-        host="0.0.0.0",
-        port=port
-    )
+    main()
