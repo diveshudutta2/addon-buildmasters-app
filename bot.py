@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 LOCATION, PRICE, PROPERTY_TYPE = range(3)
 
 # Bot Token & Owner PIN (Aap apne environment variables ya config se le sakte hain)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+BOT_TOKEN = "8825765752:AAEwnDGTmHaD2nY0g2KAOYi9vP_Pr-pJH7I"
 
 # --- START / MAIN MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
