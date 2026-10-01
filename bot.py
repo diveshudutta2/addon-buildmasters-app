@@ -151,14 +151,15 @@ def seo_menu_keyboard():
             InlineKeyboardButton("🥊 Competitor Tracker", callback_data="btn_competitors")
         ],
         [
-            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights"),
-            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc")
+            InlineKeyboardButton("🔑 Competitor Keywords", callback_data="btn_comp_keywords"),
+            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights")
         ],
         [
-            InlineKeyboardButton("🛠 Services List", callback_data="btn_services"),
-            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq")
+            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc"),
+            InlineKeyboardButton("🛠 Services List", callback_data="btn_services")
         ],
         [
+            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq"),
             InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")
         ]
     ])
@@ -484,13 +485,37 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    elif data == "btn_comp_keywords":
+        text = (
+            "🔑 **COMPETITOR KEYWORD BREAKDOWN (Dharamshala)**\n\n"
+            "🔍 *Yeh wo main keywords hain jinpar aapke competitors traffic la rahe hain:*\n\n"
+            "1. **Himfrabuilt Infra (Rank #1):**\n"
+            "   • `House construction cost in Dharamshala`\n"
+            "   • `Best building contractors in Kangra`\n"
+            "   • `Residential villa builders`\n\n"
+            "2. **Addon Buildmasters (Aapki Company - Rank #2):** 🔥\n"
+            "   • `Turnkey contractor Dharamshala`\n"
+            "   • `Modular kitchen in Dharamshala`\n"
+            "   • `Interior designers Himachal Pradesh`\n"
+            "   • `Modern front elevation designs`\n\n"
+            "3. **Dhauladhar Builders (Rank #4):**\n"
+            "   • `Architects and builders in McLeod Ganj`\n"
+            "   • `Commercial building construction`\n\n"
+            "💡 *Growth Opportunity:* Aapke paas 'Turnkey contractor' aur 'Modular kitchen' ki strong authority hai. Agar aap apne description aur posts mein `House construction cost in Dharamshala` keyword bhi include kar dein, toh aap #1 position grab kar lenge!"
+        )
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]])
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
+
     elif data == "btn_insights":
         ins = get_gmb_insights()
         text = (
             "📈 **GOOGLE BUSINESS PERFORMANCE (Last 24 Hours)**\n\n"
             f"• 👁️ **Profile Searches:** {ins['searches']}\n"
             f"• 📞 **Customer Calls:** {ins['calls']}\n"
-            f"• 🗺️ **Directions:** {ins['directions']}\n"
+            f"• 🗺️️ **Directions:** {ins['directions']}\n"
             f"• 🌐 **Website Clicks:** {ins['website']}\n\n"
             f"🎯 **Top Query:** `\"{ins['top_query']}\"`"
         )
