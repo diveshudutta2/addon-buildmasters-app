@@ -1,246 +1,89 @@
 import os
 import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ConversationHandler,
-    ContextTypes,
-    filters,
-)
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
+from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# Logging setup
+# Logging setup karein taaki errors ya status console mein dikhein
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Conversation states for Property Search
-LOCATION, PRICE, PROPERTY_TYPE = range(3)
+# Render par environment variables (Render Environment Variables) se token uthane ke liye
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Bot Token (Render environment variable se uthayega)
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
+# Main Menu Keyboard Layout
+def get_main_menu_keyboard():
+    keyboard = [
+        [KeyboardButton("📢 Marketing"), KeyboardButton("🏢 Property")],
+        [KeyboardButton("🏗️ Construction"), KeyboardButton("🛋️ Interior")]
+    ]
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, input_field_placeholder="Please choose a section...")
 
-# --- START / MAIN MENU ---
+# /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🏢 Property Search & Download", callback_data="menu_property_search")],
-        [InlineKeyboardButton("📊 SEO Rankings & Reports", callback_data="menu_seo")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    welcome_text = (
-        "👋 **Welcome to Addon Buildmasters Management Bot**\n\n"
-        "Aap yahan se **Property Search** karke instant details PDF download kar sakte hain, ya apna **SEO Management & Reports** access kar sakte hain."
+    user_name = update.effective_user.first_name
+    welcome_message = (
+        f"Namaste {user_name} ji! 🙏\n\n"
+        "Welcome to **Addon Buildmasters Bot**.\n"
+        "Aapki construction aur interior services ko manage karne ke liye main taiyar hoon. "
+        "Neeche diye gaye sections mein se koi option chunein:"
     )
-    
-    if update.callback_query:
-        query = update.callback_query
-        await query.answer()
-        await query.edit_message_text(text=welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
-    else:
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup, parse_mode="Markdown")
-
-# --- PROPERTY SEARCH CONVERSATION FLOW ---
-async def property_search_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text(
-        text="🔍 **Property Search Module**\n\nKripya target **Location** enter karein (e.g., Dharamshala, New Delhi, Chandigarh):",
-        parse_mode="Markdown"
-    )
-    return LOCATION
-
-async def receive_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['location'] = update.message.text
     await update.message.reply_text(
-        "💰 Ab **Price Range** specify karein (e.g., 50L to 1.5Cr, Under 1Cr):"
-    )
-    return PRICE
-
-async def receive_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['price'] = update.message.text
-    
-    keyboard = [
-        [InlineKeyboardButton("🏠 Residential", callback_data="type_residential")],
-        [InlineKeyboardButton("🏢 Commercial", callback_data="type_commercial")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(
-        "🏗️ Kripya **Property Type** select karein:",
-        reply_markup=reply_markup
-    )
-    return PROPERTY_TYPE
-
-async def receive_type_and_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    prop_type = "Residential" if "residential" in query.data else "Commercial"
-    context.user_data['property_type'] = prop_type
-    
-    loc = context.user_data.get('location', 'Unknown')
-    price = context.user_data.get('price', 'N/A')
-    
-    await query.edit_message_text(
-        text=f"⏳ **Searching properties across sites...**\n\n📍 Location: {loc}\n💵 Budget: {price}\n🏷️ Type: {prop_type}\n\nKripya thoda intezaar karein, live results fetch ho rahe hain...",
+        welcome_message, 
+        reply_markup=get_main_menu_keyboard(), 
         parse_mode="Markdown"
     )
-    
-    # Scraped / Aggregated Property Results
-    properties = [
-        {
-            "title": f"Prime {prop_type} Space in {loc}",
-            "price": price,
-            "details": "Modern 3D Elevation layout, high footfall area, immediate registry available.",
-            "source_link": f"https://realestate-aggregator.com/search?loc={loc}&type={prop_type}"
-        },
-        {
-            "title": f"Luxury Independent {prop_type} Unit",
-            "price": price,
-            "details": "Roadside prime access, premium interior finish, spacious layout.",
-            "source_link": f"https://realestate-aggregator.com/listing/{loc}-02"
-        }
-    ]
-    
-    context.user_data['last_results'] = properties
-    
-    result_text = f"✅ **Found {len(properties)} Properties for {loc}:**\n\n"
-    keyboard = []
-    
-    for idx, prop in enumerate(properties):
-        result_text += f"*{idx+1}. {prop['title']}*\n💰 Price: {prop['price']}\n📝 {prop['details']}\n\n"
-        keyboard.append([InlineKeyboardButton(f"📥 Download Details (Prop #{idx+1})", callback_data=f"download_prop_{idx}")])
-    
-    keyboard.append([InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_to_menu")])
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        text=result_text,
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
-    
-    return ConversationHandler.END
 
-# --- PDF GENERATOR FOR PROPERTIES ---
-def generate_property_pdf(prop_data, filename="property_details.pdf"):
-    c = canvas.Canvas(filename, pagesize=letter)
-    width, height = letter
+# Menu sections ke liye message handler
+async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text
     
-    # Header Banner
-    c.setFillColorRGB(0.1, 0.2, 0.4)
-    c.rect(0, height - 80, width, 80, fill=1, stroke=0)
-    
-    c.setFillColorRGB(1, 1, 1)
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(40, height - 45, "ADDON BUILDMASTERS - PROPERTY REPORT")
-    
-    # Content
-    c.setFillColorRGB(0, 0, 0)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(40, height - 120, f"Title: {prop_data['title']}")
-    
-    c.setFont("Helvetica", 12)
-    c.drawString(40, height - 150, f"Price Range: {prop_data['price']}")
-    c.drawString(40, height - 180, f"Specifications: {prop_data['details']}")
-    c.drawString(40, height - 210, f"Source Web Link: {prop_data['source_link']}")
-    
-    c.setFont("Helvetica-Oblique", 10)
-    c.drawString(40, 40, "Generated automatically via Addon Buildmasters Bot.")
-    
-    c.save()
-    return filename
-
-async def download_property_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    data_idx = int(query.data.split("_")[-1])
-    properties = context.user_data.get('last_results', [])
-    
-    if properties and len(properties) > data_idx:
-        prop = properties[data_idx]
-        pdf_path = generate_property_pdf(prop)
-        
-        with open(pdf_path, 'rb') as f:
-            await context.bot.send_document(
-                chat_id=query.message.chat_id,
-                document=f,
-                filename=f"Property_{data_idx+1}_Details.pdf",
-                caption=f"📄 Ye lijiye aapki property ki poori detail file: *{prop['title']}*",
-                parse_mode="Markdown"
-            )
-        os.path.exists(pdf_path) and os.remove(pdf_path)
+    if text == "📢 Marketing":
+        response = (
+            "📢 **Marketing Section**\n\n"
+            "Yahan aapko lead generation, promotional campaigns, aur social media management ki details milengi.\n"
+            "*(Aage ka module yahan integrate kiya jayega)*"
+        )
+    elif text == "🏢 Property":
+        response = (
+            "🏢 **Property Section**\n\n"
+            "Yahan properties listings, land details, aur commercial/residential plots ki information hogi.\n"
+            "*(Aage ka module yahan integrate kiya jayega)*"
+        )
+    elif text == "🏗️ Construction":
+        response = (
+            "🏗️ **Construction Section**\n\n"
+            "Turnkey construction projects, progress tracking, aur estimates yahan manage honge.\n"
+            "*(Aage ka module yahan integrate kiya jayega)*"
+        )
+    elif text == "🛋️ Interior":
+        response = (
+            "🛋️ **Interior Section**\n\n"
+            "Luxury interior designs, 3D elevations, aur material catalogs yahan show honge.\n"
+            "*(Aage ka module yahan integrate kiya jayega)*"
+        )
     else:
-        await query.message.reply_text("⚠️️ Session expired ya property data nahi mila. Kripya dobara search karein.")
+        response = "Kripya neeche diye gaye keyboard buttons ka hi upyog karein ya /start dabayein."
 
-# --- SEO MANAGEMENT MODULE ---
-async def seo_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("📈 Keyword Rankings (Dharamshala/Kangra)", callback_data="seo_rankings")],
-        [InlineKeyboardButton("🏆 Top Competitors PDF Report", callback_data="seo_competitors")],
-        [InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_to_menu")],
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text="📊 **SEO Management Panel**\n\nAap apne local rankings aur competitor reports yahan se track kar sakte hain:",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(response, parse_mode="Markdown")
 
-async def seo_rankings_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    report = (
-        "📈 **Live Keyword Rankings (Addon Buildmasters):**\n\n"
-        "1. *Turnkey Construction Dharamshala* -> Rank #2\n"
-        "2. *Luxury Interior Designers Kangra* -> Rank #1\n"
-        "3. *Modern 3D Elevation HP* -> Rank #3\n\n"
-        "Status: All core keywords performing strongly!"
-    )
-    keyboard = [[InlineKeyboardButton("🔙 Back to SEO Menu", callback_data="menu_seo")]]
-    await query.edit_message_text(text=report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("❌ Operation cancel kar diya gaya hai.")
-    return ConversationHandler.END
-
-# --- MAIN APP ROUTER ---
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    if not TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN environment variable set nahi ki gayi hai!")
+        return
 
-    # Property search conversation handler
-    prop_conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(property_search_start, pattern="^menu_property_search$")],
-        states={
-            LOCATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_location)],
-            PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_price)],
-            PROPERTY_TYPE: [CallbackQueryHandler(receive_type_and_search, pattern="^type_")],
-        },
-        fallbacks=[CommandHandler("cancel", cancel)],
-    )
+    # Application build karein
+    application = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(prop_conv_handler)
-    app.add_handler(CallbackQueryHandler(download_property_pdf, pattern="^download_prop_"))
-    app.add_handler(CallbackQueryHandler(seo_menu_handler, pattern="^menu_seo$"))
-    app.add_handler(CallbackQueryHandler(seo_rankings_report, pattern="^seo_rankings$"))
-    app.add_handler(CallbackQueryHandler(start, pattern="^back_to_menu$"))
+    # Handlers add karein
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_menu_selection))
 
-    print("🤖 Combined Bot (SEO + Property Search) is running smoothly...")
-    app.run_polling()
+    # Bot ko start karein (Polling)
+    logger.info("Bot successfully start ho raha hai...")
+    application.run_polling()
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
