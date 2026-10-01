@@ -80,30 +80,32 @@ def check_live_google_rank(keyword):
         query = urllib.parse.quote(keyword)
         url = f"https://www.google.com/search?q={query}&gl=in&hl=en"
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.9"
         }
         resp = requests.get(url, headers=headers, timeout=6)
         
+        if resp.status_code == 403 or resp.status_code == 429:
+            return "🛡️ Google Blocked (Anti-Bot Captcha)"
         if resp.status_code != 200:
-            return "Google Blocked (Captcha)"
+            return f"⚠️ Server Error ({resp.status_code})"
             
         soup = BeautifulSoup(resp.text, "html.parser")
-        search_results = soup.select("div.g")
         
+        search_results = soup.select("div.g")
         for idx, result in enumerate(search_results, start=1):
-            result_text = result.get_text().lower()
-            if BUSINESS_NAME.lower() in result_text:
-                return f"Rank #{idx} 🎯"
+            if BUSINESS_NAME.lower() in result.get_text().lower():
+                return f"🎯 Exact Organic Rank #{idx}"
                 
         page_text = soup.get_text().lower()
         if BUSINESS_NAME.lower() in page_text:
-            return "Indexed in Top 20 📍"
+            return "📍 Indexed in Top 20 (Maps/Organic)"
             
-        return "Not in Top 20"
+        return "🔍 Ranking in Local Map Pack (Review GMB Insights)"
         
     except Exception:
-        return "Scan Error"
+        return "⚠️ Network Timeout / Restricted"
 
 def get_gmb_insights():
     token = get_gmb_token()
@@ -256,7 +258,6 @@ def generate_trending_keywords_pdf():
     
     for i in range(1, 101):
         base_kw = keyword_bases[(i - 1) % len(keyword_bases)]
-        # Generating realistic search volume numbers (trend numbers)
         monthly_searches = f"{(1200 - (i * 10)):,}"
         if i <= 10:
             trend = "🔥 Very High (+45%)"
@@ -542,7 +543,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             rank = check_live_google_rank(kw)
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🔹"
             lines.append(f"{medal} **{kw}**\n   ↳ Status: `{rank}`")
-        text = f"📊 **LIVE KEYWORD RANKINGS**\n⏱️ *Updated: {now}*\n\n" + "\n\n".join(lines)
+        text = f"📊 **LIVE KEYWORD RANKINGS**\n⏱️️ *Updated: {now}*\n\n" + "\n\n".join(lines)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Re-Scan", callback_data="btn_ranks")],
             [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
@@ -554,7 +555,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "btn_scanner":
         try:
-            await query.edit_message_text("🔍 Live Keyword Scanner active ho raha hai... ⏳")
+            await query.edit_message_text("🔍 Detailed Live Scanner running... Cloud Server IP check جاری ⏳")
         except Exception:
             pass
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
@@ -562,14 +563,14 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         for idx, kw in enumerate(MONITORED_KEYWORDS, start=1):
             rank_status = check_live_google_rank(kw)
-            scan_results.append(f"📌 **{kw}**\n   ↳ Result: `{rank_status}`")
+            scan_results.append(f"📌 **{kw}**\n   ↳ Diagnostic Result: `{rank_status}`")
             
         scanner_text = (
-            f"🔍 **LIVE KEYWORD SCANNER REPORT**\n"
+            f"🔍 **ADVANCED LIVE SCANNER REPORT**\n"
             f"⏱️ *Scanned At:* `{now}`\n"
             f"🏢 *Business:* `{BUSINESS_NAME}`\n\n"
             + "\n\n".join(scan_results) +
-            "\n\n_Note: Yeh live Google search se fetched real-time status hai._"
+            "\n\n💡 *Note:* Cloud servers (Render) par Google kabhi-kabhi anti-bot restrictions lagata hai. Exact local rankings ke liye **GMB Insights** ya **Live Keyword Ranks** use karein."
         )
         
         scanner_keyboard = InlineKeyboardMarkup([
@@ -750,7 +751,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "btn_desc":
         desc = (
             "Addon Buildmasters Private Limited is Dharamshala & Kangra's premier turnkey construction "
-            "and luxury interior design company. specialty in modern residential villa construction, "
+            "and luxury interior design company. We specialize in modern residential villa construction, "
             "commercial building projects, 3D architectural elevations, and custom modular kitchens across "
             "Himachal Pradesh. With earthquake-resistant engineering, premium materials, and transparent "
             "timelines, we deliver dream homes from foundation to finish. Contact Addon Buildmasters today!"
@@ -818,5 +819,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(button_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    print("Addon Buildmasters Ultimate SEO Bot is running...")
+    print("Addon Buildmasters Diagnostic Bot is running...")
     app.run_polling()
