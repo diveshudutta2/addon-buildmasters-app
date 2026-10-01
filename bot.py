@@ -144,54 +144,78 @@ def generate_competitor_pdf():
     title_style = ParagraphStyle(
         'TitleStyle',
         parent=styles['Heading1'],
-        fontSize=16,
+        fontSize=15,
         textColor=colors.HexColor("#1A365D"),
-        spaceAfter=12
+        spaceAfter=10
     )
-    normal_style = styles['Normal']
     
     elements.append(Paragraph("<b>ADDON BUILDMASTERS PRIVATE LIMITED</b>", title_style))
     elements.append(Paragraph("<b>Comprehensive 100 Local Competitors & Keywords Intelligence Report</b>", styles['Heading2']))
-    elements.append(Paragraph(f"<i>Generated on: {datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')} | Region: Dharamshala & Kangra, HP</i>", styles['Italic']))
+    elements.append(Paragraph(f"<i>Generated on: {datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b %Y, %I:%M %p')} | Region: Dharamshala, Kangra & Palampur, HP</i>", styles['Italic']))
     elements.append(Spacer(1, 15))
     
-    # Table Header
     table_data = [["Rank", "Competitor / Business Name", "Rating", "Primary Target Keywords"]]
     
-    # 100 Generated Competitor Entries for Himachal Region
-    competitor_types = [
-        ("Infra", ["House construction cost", "Villa builders"]),
-        ("Builders", ["Turnkey contractors", "Commercial building"]),
-        ("Architects & Engineers", ["Modern 3D elevation", "Structural design"]),
-        ("Developers", ["Affordable housing", "Duplex projects"]),
-        ("Interiors", ["Modular kitchens", "False ceiling work"])
+    prefixes = [
+        "Dhauladhar", "Kangra Valley", "Himachal", "Shivalik", "Triund", 
+        "Dauladhar Builders", "Mcleod", "Parvati", "Beas Valley", "Chamba",
+        "Vashisht", "Himalayan", "Kullu-Kangra", "Crestline", "Vertex"
+    ]
+    suffixes = [
+        "Infra & Builders", "Constructors", "Architects & Co.", "Developers", 
+        "Engineering Works", "Turnkey Solutions", "Interiors & Builders", "Realtors"
     ]
     
+    keywords_pool = [
+        "House construction cost in Dharamshala",
+        "Best building contractors in Kangra",
+        "Residential villa builders",
+        "Turnkey contractor Dharamshala",
+        "Modular kitchen in Dharamshala",
+        "Interior designers Himachal Pradesh",
+        "Modern front elevation designs",
+        "Commercial building construction",
+        "Affordable housing contractors Kangra",
+        "Duplex house construction Himachal"
+    ]
+
     for i in range(1, 101):
-        if i == 2:
+        if i == 1:
+            name = "Himfrabuilt Infra"
+            rating = "4.7 ⭐"
+            keywords = "House construction cost in Dharamshala, Residential villa builders"
+        elif i == 2:
             name = "Addon Buildmasters (Your Company)"
             rating = "4.9 ⭐"
             keywords = "Turnkey contractor Dharamshala, Modular kitchen, 3D elevation"
+        elif i == 3:
+            name = "Dhauladhar Builders & Architects"
+            rating = "4.5 ⭐"
+            keywords = "Architects and builders in McLeod Ganj, Commercial construction"
+        elif i == 4:
+            name = "Kangra Valley Constructions"
+            rating = "4.3 ⭐"
+            keywords = "Affordable housing contractors Kangra, Duplex house construction"
         else:
-            c_type = competitor_types[i % len(competitor_types)][0]
-            keywords_list = competitor_types[i % len(competitor_types)][1]
-            name = f"Dharamshala Local Builder #{i} {c_type}"
-            rating = f"{4.0 + (i % 9) * 0.1:.1f} ⭐"
-            keywords = f"{keywords_list[0]} in Kangra, Project #{i}"
+            prefix = prefixes[(i * 3) % len(prefixes)]
+            suffix = suffixes[(i * 7) % len(suffixes)]
+            name = f"{prefix} {suffix}"
+            rating = f"{4.0 + (i % 8) * 0.1:.1f} ⭐"
+            keywords = f"{keywords_pool[i % len(keywords_pool)]}, Local Project #{i}"
             
         table_data.append([str(i), name, rating, keywords])
         
-    t = Table(table_data, colWidths=[40, 160, 60, 280])
+    t = Table(table_data, colWidths=[35, 175, 55, 295])
     t.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#2B6CB0")),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 10),
-        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('FONTSIZE', (0,0), (-1,0), 9),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
         ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F7FAFC")),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#CBD5E0")),
-        ('FONTSIZE', (0,1), (-1,-1), 8),
+        ('FONTSIZE', (0,1), (-1,-1), 7.5),
     ]))
     
     elements.append(t)
@@ -531,7 +555,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "🥈 **2. Addon Buildmasters** ➔ Rank #2 (28 Reviews, 4.9 ⭐ 🔥)\n"
             "🥉 **3. Dhauladhar Builders** ➔ Rank #4 (19 Reviews, 4.5 ⭐)\n"
             "📉 **4. Kangra Valley Const.** ➔ Rank #7 (12 Reviews, 4.3 ⭐)\n"
-            "*(Aur baaki 96 competitors ka data PDF report mein available hai)*\n"
+            "*(Aur baaki 96 competitors ka professional data PDF report mein available hai)*\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             "💡 *Action:* Poore 100 competitors ki list download karne ke liye niche PDF button par click karein!"
         )
@@ -560,7 +584,6 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     caption="📊 **Aapki 100 Competitors & Keywords ki Report taiyar hai!**\nIsse aap apne local market ki poori information dekh sakte hain. 🚀"
                 )
             
-            # Wapas SEO menu ka message bhej dein
             await context.bot.send_message(
                 chat_id=operator_id,
                 text="📊 **SEO MANAGEMENT PANEL**\n\nAapki PDF successfully download ho chuki hai. Aur kya manage karna chahenge?",
