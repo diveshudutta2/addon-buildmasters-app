@@ -3,17 +3,18 @@ import logging
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# Logging setup karein taaki errors ya status console mein dikhein
+# Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Render par environment variables (Render Environment Variables) se token uthane ke liye
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+# Render ke environment variables se token dynamically uthane ke liye
+# (Yeh 'TELEGRAM_BOT_TOKEN' ya 'BOT_TOKEN' dono mein se jo bhi milega use utha lega)
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 
-# Main Menu Keyboard Layout
+# Main Menu Keyboard Layout (4 Sections)
 def get_main_menu_keyboard():
     keyboard = [
         [KeyboardButton("📢 Marketing"), KeyboardButton("🏢 Property")],
@@ -23,7 +24,7 @@ def get_main_menu_keyboard():
 
 # /start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_name = update.effective_user.first_name
+    user_name = update.effective_user.first_name if update.effective_user else "Ji"
     welcome_message = (
         f"Namaste {user_name} ji! 🙏\n\n"
         "Welcome to **Addon Buildmasters Bot**.\n"
@@ -71,7 +72,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
 def main():
     if not TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN environment variable set nahi ki gayi hai!")
+        logger.error("❌ CRITICAL ERROR: Telegram Bot Token environment variable mein nahi mila!")
         return
 
     # Application build karein
@@ -82,7 +83,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_menu_selection))
 
     # Bot ko start karein (Polling)
-    logger.info("Bot successfully start ho raha hai...")
+    logger.info("🚀 Addon Buildmasters Bot successfully start ho raha hai...")
     application.run_polling()
 
 if __name__ == '__main__':
