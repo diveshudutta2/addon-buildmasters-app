@@ -21,10 +21,10 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYd
 GMB_LOCATION_ID = "17965482236175056297"
 BUSINESS_NAME = "Addon Buildmasters"
 
-# Primary Owner (Aapka Telegram ID - Is par approval alerts aayenge)
-OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "8430356644"))  # Apna numeric ID yahan verify karein
+# Owner Chat ID (Aapka Telegram ID)
+OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))
 
-# 1-Time Activation PIN
+# One-Time Activation PIN
 ONE_TIME_PIN = os.getenv("BOT_PIN", "1704")
 
 GMB_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
@@ -39,7 +39,6 @@ def load_approved_members():
                 return set(json.load(f))
         except Exception:
             pass
-    # Owner hamesha approved rahega
     return {OWNER_CHAT_ID}
 
 def save_approved_member(chat_id):
@@ -48,7 +47,7 @@ def save_approved_member(chat_id):
     with open(MEMBERS_FILE, "w") as f:
         json.dump(list(members), f)
 
-# Onboarding States: {chat_id: {"step": "name/phone/pin/waiting", "name": "", "phone": ""}}
+# Onboarding States: {chat_id: {"step": "get_name/get_phone/waiting_approval/waiting_pin", "name": "", "phone": ""}}
 user_sessions = {}
 
 # Target Local Keywords for Live Tracking
@@ -140,13 +139,13 @@ def main_menu_keyboard():
 def back_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]])
 
-# ================= Onboarding & Security Handlers =================
+# ================= Handlers =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     approved_members = load_approved_members()
 
-    # Agar User Approved hai (Owner ya already activated staff)
-    if chat_id in approved_members:
+    # Agar User Approved hai ya Owner hai
+    if chat_id in approved_members or chat_id == OWNER_CHAT_ID:
         welcome_text = (
             "🏢 **ADDON BUILDMASTERS - CONTROL PANEL**\n"
             "📍 *Dharamshala & Kangra | Google Business Profile*\n\n"
@@ -158,12 +157,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
         return
 
-    # Naya User - Step 1: Naam maango
+    # Naya User - Registration Form Step 1: Naam maango
     user_sessions[chat_id] = {"step": "get_name"}
     reg_msg = (
         "👋 **Namaste! Welcome to Addon Buildmasters Bot.**\n\n"
-        "🔒 Yeh bot private business use ke liye hai.\n"
-        "Access pane ke liye kripya **apna poora Naam** likhkar bhejein:"
+        "🔒 Yeh bot private business access ke liye protected hai.\n"
+        "Kripya access pane ke liye **apna poora Naam** likhkar reply karein:"
     )
     await update.message.reply_text(reg_msg, parse_mode="Markdown")
 
@@ -172,15 +171,15 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text.strip()
     approved_members = load_approved_members()
 
-    # Already Approved user sent random text
-    if chat_id in approved_members:
+    # Already approved user
+    if chat_id in approved_members or chat_id == OWNER_CHAT_ID:
         await start(update, context)
         return
 
     session = user_sessions.get(chat_id, {})
     step = session.get("step")
 
-    # Step 1: Naam mil gaya -> Mobile maango
+    # Step 1: Naam mil gaya -> Mobile number maango
     if step == "get_name":
         session["name"] = user_text
         session["step"] = "get_phone"
@@ -191,20 +190,20 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Step 2: Mobile mil gaya -> Owner ko approval request bhejo
+    # Step 2: Mobile mil gaya -> Owner ko alert bhejo
     elif step == "get_phone":
         session["phone"] = user_text
         session["step"] = "waiting_approval"
         user_sessions[chat_id] = session
 
         await update.message.reply_text(
-            "✅ **Details jama ho gayi hain!**\n\n"
-            "⏳ Aapki request **Admin (Owner)** ke paas approval ke liye bhej di gayi hai. "
-            "Approval milte hi aapko notification mil jayega.",
+            "✅ **Details submit ho gayi hain!**\n\n"
+            "⏳ Aapki access request **Admin (Owner)** ke paas bhej di gayi hai. "
+            "Approval aate hi aapko notification mil jayega.",
             parse_mode="Markdown"
         )
 
-        # OWNER KO ALERT BHEJEIN
+        # OWNER KO APPROVAL ALERT BHEJEIN
         approval_markup = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("✅ Approve Access", callback_data=f"approve_{chat_id}"),
@@ -229,7 +228,7 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             print(f"Failed to alert owner: {e}")
         return
 
-    # Step 3: Owner ne approve kar diya -> User se 1-time PIN maango
+    # Step 3: Owner approval ke baad 1-Time PIN verify karein
     elif step == "waiting_pin":
         if user_text == ONE_TIME_PIN:
             save_approved_member(chat_id)
@@ -245,29 +244,32 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ **Galat PIN!** Kripya sahi 4-digit Security PIN enter karein:")
         return
 
-# ================= Approval & Menu Buttons =================
+    # Agar koi bina /start ke message kare
+    else:
+        await start(update, context)
+
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
     operator_id = update.effective_chat.id
 
-    # 1. OWNER APPROVAL ACTION
+    # 1. OWNER APPROVAL ACTIONS
     if data.startswith("approve_"):
-        target_id = int(target_id = int(data.split("_")[1]))
+        target_id = int(data.split("_")[1])
         session = user_sessions.get(target_id, {})
         session["step"] = "waiting_pin"
         user_sessions[target_id] = session
 
-        await query.edit_message_text(f"✅ **Approved!** User `{session.get('name', target_id)}` ko PIN enter karne ka message bhej diya gaya hai.")
+        user_name = session.get("name", str(target_id))
+        await query.edit_message_text(f"✅ **Approved!** User `{user_name}` ko PIN enter karne ka message bhej diya gaya hai.")
 
-        # User ko PIN enter karne ka alert bhejein
         try:
             await context.bot.send_message(
                 chat_id=target_id,
                 text=(
                     "🎉 **Good News! Admin ne aapki request APPROVE kar di hai.**\n\n"
-                    "Ab aakhri step: Kripya **1-Time Security PIN** (1704) enter karein bot activate karne ke liye:"
+                    f"Ab aakhri step: Kripya **1-Time Security PIN** ({ONE_TIME_PIN}) enter karein bot activate karne ke liye:"
                 ),
                 parse_mode="Markdown"
             )
@@ -276,27 +278,27 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data.startswith("reject_"):
-        target_id = int(target_id = int(data.split("_")[1]))
+        target_id = int(data.split("_")[1])
         user_sessions.pop(target_id, None)
-        await query.edit_message_text(f"❌ User request rejected.")
+        await query.edit_message_text("❌ User access request rejected.")
         try:
             await context.bot.send_message(
                 chat_id=target_id,
                 text="❌ **Maaf kijiye!** Admin ne aapki access request reject kar di hai."
             )
-        except Exception as e:
+        except Exception:
             pass
         return
 
-    # 2. APPROVED USERS MENU
+    # 2. CONTROL PANEL ACTIONS FOR APPROVED USERS
     approved_members = load_approved_members()
-    if operator_id not in approved_members:
+    if operator_id not in approved_members and operator_id != OWNER_CHAT_ID:
         await start(update, context)
         return
 
     if data in ["btn_home", "btn_refresh"]:
         await start(update, context)
-        
+
     elif data == "btn_ranks":
         await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
@@ -350,3 +352,38 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Google par update ho raha hai... 🚀")
         try:
             update_gmb_description(desc)
+            await query.message.reply_text("🎉 Naya SEO Description Google Profile par LIVE update ho gaya!")
+        except Exception as e:
+            await query.message.reply_text(f"❌ Error: {str(e)}")
+
+    elif data == "btn_services":
+        text = (
+            "🛠️ **TOP SERVICES TO ADD IN GOOGLE PROFILE:**\n\n"
+            "1. Turnkey Villa Construction (Dharamshala & Kangra)\n"
+            "2. Luxury Modular Kitchens (Acrylic & PU Finish)\n"
+            "3. 3D Front Elevation & Floor Plans\n"
+            "4. Commercial Hotel & Resort Building\n"
+            "5. Interior Renovation & Wooden Work"
+        )
+        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+
+    elif data == "btn_faq":
+        text = (
+            "❓ **GOOGLE MAPS FAQs:**\n\n"
+            "• Free site inspection available in Dharamshala/Kangra.\n"
+            "• Earthquake Zone-V compliant certified construction.\n"
+            "• Modular kitchen handover in 15–21 working days."
+        )
+        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+
+# ================= Main =================
+if __name__ == "__main__":
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("menu", start))
+    app.add_handler(CallbackQueryHandler(button_router))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
+
+    print("Addon Buildmasters Approval & PIN Secured Bot is running...")
+    app.run_polling()
