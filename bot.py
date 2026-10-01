@@ -22,7 +22,7 @@ GMB_LOCATION_ID = "17965482236175056297"
 BUSINESS_NAME = "Addon Buildmasters"
 
 # Primary Owner (Aapka Telegram ID - Is par approval alerts aayenge)
-OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))  # Apna numeric ID yahan verify karein
+OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "8430356644"))  # Apna numeric ID yahan verify karein
 
 # 1-Time Activation PIN
 ONE_TIME_PIN = os.getenv("BOT_PIN", "1704")
