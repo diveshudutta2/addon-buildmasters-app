@@ -5,14 +5,14 @@ from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters
 
-# Logging setup karein
+# Logging setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Flask App setup (Render Web Service ke liye zaroori hai)
+# Flask App setup (Render ke liye zaroori web server)
 app = Flask(__name__)
 
 @app.route('/')
@@ -22,7 +22,7 @@ def home():
 # Telegram Bot Token (Render Environment Variables se uthayega)
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") or os.getenv("BOT_TOKEN")
 
-# Main Menu Keyboard Layout (Aapke bataye huye 4 sections)
+# Main Menu Keyboard Layout (4 Sections)
 def get_main_menu_keyboard():
     keyboard = [
         [KeyboardButton("📢 Marketing"), KeyboardButton("🏗️ Construction")],
@@ -56,7 +56,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
             "• Social media & Google Business Profile (GMB) management\n"
             "*(Aage ka module yahan integrate kiya jayega)*"
         )
-    elif text == "🏗️ Construction":
+    elif text == "🏗️️ Construction":
         response = (
             "🏗️ **Construction Section**\n\n"
             "• Turnkey construction projects\n"
@@ -73,7 +73,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
         )
     elif text == "🛋️ Interior":
         response = (
-            "🛋️ **Interior Section**\n\n"
+            "🛋️️ **Interior Section**\n\n"
             "• Luxury interior design catalogs\n"
             "• Modern 3D elevations & space renders\n"
             "• Showroom/Home decor quotations\n"
@@ -84,7 +84,7 @@ async def handle_menu_selection(update: Update, context: ContextTypes.DEFAULT_TY
 
     await update.message.reply_text(response, parse_mode="Markdown")
 
-# Telegram Bot Runner Function (Async)
+# Telegram Bot Runner Function (Background Thread)
 def run_telegram_bot():
     if not TOKEN:
         logger.error("❌ CRITICAL ERROR: Telegram Bot Token environment variable mein nahi mila!")
@@ -97,14 +97,16 @@ def run_telegram_bot():
     logger.info("🚀 Addon Buildmasters Bot polling start ho raha hai...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-# Main Execution: Background thread mein Telegram Bot aur main thread mein Flask server chalega
 if __name__ == '__main__':
+    # Telegram bot ko background thread mein chalaein taaki port conflict na ho
     if TOKEN:
         bot_thread = threading.Thread(target=run_telegram_bot)
         bot_thread.daemon = True
         bot_thread.start()
+        logger.info("🚀 Starting Telegram Bot in Background...")
     else:
-        logger.warning("⚠️️ Warning: Bot token absent, starting Flask server only.")
+        logger.warning("⚠ Warning: Bot token absent, running web server only.")
 
-    port = int(os.environ.get('PORT', 5000))
+    # Flask Server (Main thread)
+    port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
