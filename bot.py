@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 LOCATION, PRICE, PROPERTY_TYPE = range(3)
 
 # Bot Token & Owner PIN (Aap apne environment variables ya config se le sakte hain)
-BOT_TOKEN = "8825765752:AAEwnDGTmHaD2nY0g2KAOYi9vP_Pr-pJH7I"
+BOT_TOKEN ="8825765752:AAGgqu2M0zYumB_IARVo9mvCDu2RyrQ51GM"
 
 # --- START / MAIN MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
