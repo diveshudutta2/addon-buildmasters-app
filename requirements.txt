@@ -1,3 +1,10 @@
-flask
-python-telegram-bot
-requests
+* **Server-Side Rendering (SSR)** (Thymeleaf / JSP)
+* **Clean & SEO-Friendly URLs** (`@PathVariable`)
+* **Dynamic Meta Tags** (Title, Description & Open Graph social tags)
+* **XML Sitemap & Robots.txt Setup**
+* **Google Search Console & GA4 Analytics Integration**
+* **Page Speed Optimization & Caching** (Spring Cache / Redis / Gzip)
+* **Image Optimization** (WebP format & CDN)
+* **Mobile Responsiveness & HTTPS SSL Security**
+* **Schema Markup** (JSON-LD Structured Data for Local Business)
+* **Canonical Tags Implementation**
