@@ -6,3 +6,4 @@ google-api-python-client
 requests
 pytz
 beautifulsoup4
+reportlab
