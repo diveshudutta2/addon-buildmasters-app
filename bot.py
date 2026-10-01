@@ -21,13 +21,35 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8712926615:AAFNK7TnmU5qEYd
 GMB_LOCATION_ID = "17965482236175056297"
 BUSINESS_NAME = "Addon Buildmasters"
 
-# 4-Digit Security PIN (Aap ise yahan change kar sakte hain)
-SECURITY_PIN = os.getenv("BOT_PIN", "1704")
+# Primary Owner (Aapka Telegram ID - Is par approval alerts aayenge)
+OWNER_CHAT_ID = int(os.getenv("OWNER_CHAT_ID", "123456789"))  # Apna numeric ID yahan verify karein
+
+# 1-Time Activation PIN
+ONE_TIME_PIN = os.getenv("BOT_PIN", "1704")
 
 GMB_SCOPES = ["https://www.googleapis.com/auth/business.manage"]
 
-# Set to store verified users: {chat_id}
-authenticated_users = set()
+# ================= Persistent Members Database =================
+MEMBERS_FILE = "approved_members.json"
+
+def load_approved_members():
+    if os.path.exists(MEMBERS_FILE):
+        try:
+            with open(MEMBERS_FILE, "r") as f:
+                return set(json.load(f))
+        except Exception:
+            pass
+    # Owner hamesha approved rahega
+    return {OWNER_CHAT_ID}
+
+def save_approved_member(chat_id):
+    members = load_approved_members()
+    members.add(chat_id)
+    with open(MEMBERS_FILE, "w") as f:
+        json.dump(list(members), f)
+
+# Onboarding States: {chat_id: {"step": "name/phone/pin/waiting", "name": "", "phone": ""}}
+user_sessions = {}
 
 # Target Local Keywords for Live Tracking
 MONITORED_KEYWORDS = [
@@ -47,7 +69,7 @@ def get_gmb_token():
     except Exception:
         return None
 
-# ================= 1. Live Google Rank Checker =================
+# ================= Google Rank & Performance =================
 def check_live_google_rank(keyword):
     try:
         query = urllib.parse.quote(keyword)
@@ -58,10 +80,8 @@ def check_live_google_rank(keyword):
         resp = requests.get(url, headers=headers, timeout=6)
         if resp.status_code != 200:
             return "Active in Local Index"
-            
         soup = BeautifulSoup(resp.text, "html.parser")
-        full_text = soup.get_text().lower()
-        if BUSINESS_NAME.lower() in full_text:
+        if BUSINESS_NAME.lower() in soup.get_text().lower():
             headings = soup.find_all(["h3", "div"], text=True)
             for idx, h in enumerate(headings[:20], start=1):
                 if BUSINESS_NAME.lower() in h.get_text().lower():
@@ -71,12 +91,10 @@ def check_live_google_rank(keyword):
     except Exception:
         return "Rank #1-3 (Locally Indexed)"
 
-# ================= 2. GMB Performance Insights =================
 def get_gmb_insights():
     token = get_gmb_token()
     searches, calls, directions, website = 165, 8, 14, 21
     top_query = "Construction in Dharamshala"
-    
     if token:
         try:
             url = f"https://businessprofileperformance.googleapis.com/v1/locations/{GMB_LOCATION_ID}/searchkeywords:impressions.monthly"
@@ -88,16 +106,8 @@ def get_gmb_insights():
                     top_query = data[0].get("searchKeyword", top_query)
         except Exception:
             pass
-            
-    return {
-        "searches": searches,
-        "calls": calls,
-        "directions": directions,
-        "website": website,
-        "top_query": top_query
-    }
+    return {"searches": searches, "calls": calls, "directions": directions, "website": website, "top_query": top_query}
 
-# ================= 3. Update Profile Description =================
 def update_gmb_description(text):
     token = get_gmb_token()
     if not token:
@@ -110,7 +120,7 @@ def update_gmb_description(text):
         return True
     raise Exception(f"Google API Error: {resp.text}")
 
-# ================= Clean Keyboards =================
+# ================= Keyboards =================
 def main_menu_keyboard():
     return InlineKeyboardMarkup([
         [
@@ -124,117 +134,196 @@ def main_menu_keyboard():
         [
             InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq"),
             InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="btn_refresh")
-        ],
-        [
-            InlineKeyboardButton("🔒 Lock Session", callback_data="btn_lock")
         ]
     ])
 
 def back_keyboard():
     return InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]])
 
-# ================= Authentication Check =================
-def is_authenticated(chat_id):
-    return chat_id in authenticated_users
-
-# ================= Handlers =================
+# ================= Onboarding & Security Handlers =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    
-    # Agar user pehle se verify nahi hai
-    if not is_authenticated(chat_id):
-        text = (
-            "🔒 **ACCESS RESTRICTED - ADDON BUILDMASTERS**\n\n"
-            "Is bot ko use karne ke liye kripya **4-Digit Security PIN** enter karein:"
+    approved_members = load_approved_members()
+
+    # Agar User Approved hai (Owner ya already activated staff)
+    if chat_id in approved_members:
+        welcome_text = (
+            "🏢 **ADDON BUILDMASTERS - CONTROL PANEL**\n"
+            "📍 *Dharamshala & Kangra | Google Business Profile*\n\n"
+            "Aapka account verified hai. Niche diye gaye options se live ranking aur SEO manage karein:"
         )
         if update.message:
-            await update.message.reply_text(text, parse_mode="Markdown")
+            await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
         elif update.callback_query:
-            await update.callback_query.edit_message_text(text, parse_mode="Markdown")
+            await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
         return
 
-    # Verified User Menu
-    welcome_text = (
-        "🏢 **ADDON BUILDMASTERS - CONTROL PANEL**\n"
-        "📍 *Dharamshala & Kangra | Google Business Profile*\n\n"
-        "Neeche diye gaye options se live ranking aur SEO manage karein:"
+    # Naya User - Step 1: Naam maango
+    user_sessions[chat_id] = {"step": "get_name"}
+    reg_msg = (
+        "👋 **Namaste! Welcome to Addon Buildmasters Bot.**\n\n"
+        "🔒 Yeh bot private business use ke liye hai.\n"
+        "Access pane ke liye kripya **apna poora Naam** likhkar bhejein:"
     )
-    if update.message:
-        await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
-    elif update.callback_query:
-        await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+    await update.message.reply_text(reg_msg, parse_mode="Markdown")
 
 async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    user_input = update.message.text.strip()
-    
-    # PIN Verification check
-    if not is_authenticated(chat_id):
-        if user_input == SECURITY_PIN:
-            authenticated_users.add(chat_id)
-            await update.message.reply_text("✅ **PIN Verified! Access Granted.**\n\nMain Menu open ho raha hai... 🚀", parse_mode="Markdown")
-            await start(update, context)
-        else:
-            await update.message.reply_text("❌ **Galat PIN!** Kripya sahi 4-digit PIN enter karein:")
+    user_text = update.message.text.strip()
+    approved_members = load_approved_members()
+
+    # Already Approved user sent random text
+    if chat_id in approved_members:
+        await start(update, context)
         return
 
+    session = user_sessions.get(chat_id, {})
+    step = session.get("step")
+
+    # Step 1: Naam mil gaya -> Mobile maango
+    if step == "get_name":
+        session["name"] = user_text
+        session["step"] = "get_phone"
+        user_sessions[chat_id] = session
+        await update.message.reply_text(
+            f"Dhanyawad **{user_text}**!\n\nAb kripya apna **Mobile Number** likhkar bhejein:",
+            parse_mode="Markdown"
+        )
+        return
+
+    # Step 2: Mobile mil gaya -> Owner ko approval request bhejo
+    elif step == "get_phone":
+        session["phone"] = user_text
+        session["step"] = "waiting_approval"
+        user_sessions[chat_id] = session
+
+        await update.message.reply_text(
+            "✅ **Details jama ho gayi hain!**\n\n"
+            "⏳ Aapki request **Admin (Owner)** ke paas approval ke liye bhej di gayi hai. "
+            "Approval milte hi aapko notification mil jayega.",
+            parse_mode="Markdown"
+        )
+
+        # OWNER KO ALERT BHEJEIN
+        approval_markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Approve Access", callback_data=f"approve_{chat_id}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{chat_id}")
+            ]
+        ])
+        owner_alert = (
+            "🔔 **NAYA ACCESS REQUEST AAYA HAI!**\n\n"
+            f"👤 **Naam:** {session['name']}\n"
+            f"📱 **Mobile:** {session['phone']}\n"
+            f"🆔 **Telegram ID:** `{chat_id}`\n\n"
+            "Kya aap inhe Addon Buildmasters Bot ka access dena chahte hain?"
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=OWNER_CHAT_ID,
+                text=owner_alert,
+                reply_markup=approval_markup,
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Failed to alert owner: {e}")
+        return
+
+    # Step 3: Owner ne approve kar diya -> User se 1-time PIN maango
+    elif step == "waiting_pin":
+        if user_text == ONE_TIME_PIN:
+            save_approved_member(chat_id)
+            user_sessions.pop(chat_id, None)
+            await update.message.reply_text(
+                "🎉 **Mubarak ho! PIN Verified.**\n"
+                "Aapka account permanently activate ho gaya hai.\n\n"
+                "Main Menu open ho raha hai... 🚀",
+                parse_mode="Markdown"
+            )
+            await start(update, context)
+        else:
+            await update.message.reply_text("❌ **Galat PIN!** Kripya sahi 4-digit Security PIN enter karein:")
+        return
+
+# ================= Approval & Menu Buttons =================
 async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    chat_id = update.effective_chat.id
-    
-    if not is_authenticated(chat_id):
+    data = query.data
+    operator_id = update.effective_chat.id
+
+    # 1. OWNER APPROVAL ACTION
+    if data.startswith("approve_"):
+        target_id = int(data.split("_"))
+        session = user_sessions.get(target_id, {})
+        session["step"] = "waiting_pin"
+        user_sessions[target_id] = session
+
+        await query.edit_message_text(f"✅ **Approved!** User `{session.get('name', target_id)}` ko PIN enter karne ka message bhej diya gaya hai.")
+
+        # User ko PIN enter karne ka alert bhejein
+        try:
+            await context.bot.send_message(
+                chat_id=target_id,
+                text=(
+                    "🎉 **Good News! Admin ne aapki request APPROVE kar di hai.**\n\n"
+                    "Ab aakhri step: Kripya **1-Time Security PIN** (1704) enter karein bot activate karne ke liye:"
+                ),
+                parse_mode="Markdown"
+            )
+        except Exception as e:
+            print(f"Error notifying user: {e}")
+        return
+
+    elif data.startswith("reject_"):
+        target_id = int(data.split("_"))
+        user_sessions.pop(target_id, None)
+        await query.edit_message_text(f"❌ User request rejected.")
+        try:
+            await context.bot.send_message(
+                chat_id=target_id,
+                text="❌ **Maaf kijiye!** Admin ne aapki access request reject kar di hai."
+            )
+        except Exception as e:
+            pass
+        return
+
+    # 2. APPROVED USERS MENU
+    approved_members = load_approved_members()
+    if operator_id not in approved_members:
         await start(update, context)
         return
-        
-    data = query.data
-    
-    # HOME
+
     if data in ["btn_home", "btn_refresh"]:
         await start(update, context)
         
-    # LOCK
-    elif data == "btn_lock":
-        authenticated_users.discard(chat_id)
-        await query.edit_message_text("🔒 **Bot Locked.** Dobara use karne ke liye /start dabayein aur PIN enter karein.")
-        
-    # 1. LIVE KEYWORD RANKS
     elif data == "btn_ranks":
-        await query.edit_message_text("🔍 Google Search & Maps live scan ho raha hai... ⏳")
+        await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
-        
         lines = []
         for i, kw in enumerate(MONITORED_KEYWORDS, start=1):
             rank = check_live_google_rank(kw)
             medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🔹"
             lines.append(f"{medal} **{kw}**\n   ↳ Status: `{rank}`")
-            
-        text = (
-            f"📊 **LIVE KEYWORD RANKINGS (Google Maps & Search)**\n"
-            f"⏱️ *Updated: {now}*\n\n"
-            + "\n\n".join(lines) +
-            "\n\n🎯 *Tip: Top-3 positions Dharamshala local search pack mein direct calls laati hain.*"
-        )
+        text = f"📊 **LIVE KEYWORD RANKINGS**\n⏱️ *Updated: {now}*\n\n" + "\n\n".join(lines)
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Re-Scan", callback_data="btn_ranks")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]
         ])
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        
-    # 2. GMB INSIGHTS
+
     elif data == "btn_insights":
         ins = get_gmb_insights()
         text = (
             "📈 **GOOGLE BUSINESS PERFORMANCE (Last 24 Hours)**\n\n"
-            f"• 👁️ **Profile Searches:** {ins['searches']} logon ne dekha\n"
-            f"• 📞 **Customer Calls:** {ins['calls']} direct calls aayin\n"
-            f"• 🗺️ **Directions Asked:** {ins['directions']} maps requests\n"
-            f"• 🌐 **Website Clicks:** {ins['website']} visits\n\n"
-            f"🎯 **Top Search Query:** `\"{ins['top_query']}\"`"
+            f"• 👁️ **Profile Searches:** {ins['searches']}\n"
+            f"• 📞 **Customer Calls:** {ins['calls']}\n"
+            f"• 🗺️ **Directions:** {ins['directions']}\n"
+            f"• 🌐 **Website Clicks:** {ins['website']}\n\n"
+            f"🎯 **Top Query:** `\"{ins['top_query']}\"`"
         )
         await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
-        
-    # 3. SEO DESCRIPTION
+
     elif data == "btn_desc":
         desc = (
             "Addon Buildmasters Private Limited is Dharamshala & Kangra's premier turnkey construction "
@@ -243,19 +332,13 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Himachal Pradesh. With earthquake-resistant engineering, premium materials, and transparent "
             "timelines, we deliver dream homes from foundation to finish. Contact Addon Buildmasters today!"
         )
-        text = (
-            f"📝 **OPTIMIZED LOCAL-SEO DESCRIPTION**\n\n"
-            f"_{desc}_\n\n"
-            f"*(Length: {len(desc)} / 750 characters)*\n\n"
-            "👉 Kya aap ise direct Google Profile par update karna chahte hain?"
-        )
+        text = f"📝 **OPTIMIZED LOCAL-SEO DESCRIPTION**\n\n_{desc}_\n\n*(Length: {len(desc)} / 750)*"
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("🚀 Live Update on Google Profile", callback_data="btn_apply_desc")],
             [InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")]
         ])
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
-        
-    # APPLY DESC
+
     elif data == "btn_apply_desc":
         desc = (
             "Addon Buildmasters Private Limited is Dharamshala & Kangra's premier turnkey construction "
@@ -267,44 +350,3 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Google par update ho raha hai... 🚀")
         try:
             update_gmb_description(desc)
-            await query.message.reply_text("🎉 **Mubarak ho!** Naya SEO Description Google Profile par **LIVE** update ho gaya!")
-        except Exception as e:
-            await query.message.reply_text(f"❌ Error: {str(e)}")
-            
-    # 4. SERVICES
-    elif data == "btn_services":
-        text = (
-            "🛠️ **TOP SERVICES TO ADD IN GOOGLE PROFILE:**\n\n"
-            "1. **Turnkey Villa Construction** (Dharamshala & Kangra)\n"
-            "2. **Luxury Modular Kitchens** (Acrylic & PU Finish)\n"
-            "3. **3D Front Elevation & Floor Plans**\n"
-            "4. **Commercial Hotel & Resort Building**\n"
-            "5. **Interior Renovation & Wooden Work**\n\n"
-            "💡 *Google Profile ke 'Services' tab mein in 5 services ko add karne se search reach double hoti hai.*"
-        )
-        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
-        
-    # 5. FAQS
-    elif data == "btn_faq":
-        text = (
-            "❓ **GOOGLE MAPS HIGH-CONVERTING FAQs:**\n\n"
-            "**Q: Kya Addon Buildmasters free site inspection deta hai?**\n"
-            "A: Haan, Dharamshala aur Kangra mein initial visit aur basic estimate free hai.\n\n"
-            "**Q: Earthquake-resistant construction kaise hoti hai?**\n"
-            "A: Hum Himachal Seismic Zone-V standards ke according certified TMT steel aur grade-A concrete use karte hain.\n\n"
-            "**Q: Modular kitchen kitne din mein ready hoti hai?**\n"
-            "A: Factory precision finish ke sath 15–21 working days mein complete handover hota hai."
-        )
-        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
-
-# ================= Main =================
-if __name__ == "__main__":
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("menu", start))
-    app.add_handler(CallbackQueryHandler(button_router))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-    
-    print("Addon Buildmasters PIN Protected Bot is running...")
-    app.run_polling()
