@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 # Conversation states for Property Search
 LOCATION, PRICE, PROPERTY_TYPE = range(3)
 
-# Valid Telegram Bot Token
-BOT_TOKEN = "8825765752:AAGgqu2M0zYumB_IARVo9mvCDu2RyrQ51GM"
+# Bot Token (Render environment variable se uthayega)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 
 # --- START / MAIN MENU ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -179,7 +179,7 @@ async def download_property_pdf(update: Update, context: ContextTypes.DEFAULT_TY
             )
         os.path.exists(pdf_path) and os.remove(pdf_path)
     else:
-        await query.message.reply_text("⚠️ Session expired ya property data nahi mila. Kripya dobara search karein.")
+        await query.message.reply_text("⚠️️ Session expired ya property data nahi mila. Kripya dobara search karein.")
 
 # --- SEO MANAGEMENT MODULE ---
 async def seo_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,20 +213,6 @@ async def seo_rankings_report(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = [[InlineKeyboardButton("🔙 Back to SEO Menu", callback_data="menu_seo")]]
     await query.edit_message_text(text=report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
-async def seo_competitors_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    report = (
-        "🏆 **Competitor Intelligence Report:**\n\n"
-        "• Local Competitors Tracked: Top 10 in Dharamshala region\n"
-        "• Backlink Profile: Growing steadily\n"
-        "• GMB Optimization Score: 95/100\n\n"
-        "Status: Leading local construction searches."
-    )
-    keyboard = [[InlineKeyboardButton("🔙 Back to SEO Menu", callback_data="menu_seo")]]
-    await query.edit_message_text(text=report, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ Operation cancel kar diya gaya hai.")
     return ConversationHandler.END
@@ -251,7 +237,6 @@ def main():
     app.add_handler(CallbackQueryHandler(download_property_pdf, pattern="^download_prop_"))
     app.add_handler(CallbackQueryHandler(seo_menu_handler, pattern="^menu_seo$"))
     app.add_handler(CallbackQueryHandler(seo_rankings_report, pattern="^seo_rankings$"))
-    app.add_handler(CallbackQueryHandler(seo_competitors_report, pattern="^seo_competitors$"))
     app.add_handler(CallbackQueryHandler(start, pattern="^back_to_menu$"))
 
     print("🤖 Combined Bot (SEO + Property Search) is running smoothly...")
