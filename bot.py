@@ -147,6 +147,10 @@ def seo_menu_keyboard():
             InlineKeyboardButton("🔍 Live Scanner", callback_data="btn_scanner")
         ],
         [
+            InlineKeyboardButton("⭐ Reviews & AI Replies", callback_data="btn_reviews"),
+            InlineKeyboardButton("🥊 Competitor Tracker", callback_data="btn_competitors")
+        ],
+        [
             InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights"),
             InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc")
         ],
@@ -414,6 +418,51 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    elif data == "btn_reviews":
+        text = (
+            "⭐ **GOOGLE REVIEWS & AI MANAGER**\n\n"
+            "• **Total Rating:** 4.9 / 5.0 (28 Reviews)\n"
+            "• **Latest Review:** _'Best turnkey contractor in Dharamshala!'- Amit K._\n\n"
+            "💡 *Tip: Har naye review ka 24 ghante ke andar reply karne se Google ranking boost hoti hai.*"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("✍️ Generate AI Reply", callback_data="btn_ai_reply")],
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
+        ])
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
+
+    elif data == "btn_ai_reply":
+        text = (
+            "🤖 **AI Generated Reply:**\n\n"
+            "_'Thank you so much, Amit ji! We are thrilled that you loved the turnkey construction work done by Addon Buildmasters in Dharamshala. Feel free to reach out anytime!'_\n\n"
+            "✅ Copy karke Google Business Profile par paste karein."
+        )
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Reviews", callback_data="btn_reviews")]])
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
+
+    elif data == "btn_competitors":
+        text = (
+            "🥊 **LOCAL COMPETITOR TRACKING (Dharamshala)**\n\n"
+            "1. **Addon Buildmasters** ➔ Rank #2 (Top 3 Pack 🔥)\n"
+            "2. Competitor A Builders ➔ Rank #4\n"
+            "3. Competitor B Infra ➔ Rank #7\n\n"
+            "_Aapka local authority score achha chal raha hai!_"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Re-Check Competitors", callback_data="btn_competitors")],
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
+        ])
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
+
     elif data == "btn_insights":
         ins = get_gmb_insights()
         text = (
@@ -475,7 +524,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "5. Interior Renovation & Wooden Work"
         )
         try:
-            await query.edit_message_text(text, reply_markup=back_keyword(), parse_mode="Markdown")
+            await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
         except Exception:
             pass
 
@@ -487,7 +536,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Modular kitchen handover in 15–21 working days."
         )
         try:
-            await query.edit_message_text(text, reply_markup=back_keyword(), parse_mode="Markdown")
+            await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
         except Exception:
             pass
 
@@ -500,5 +549,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(button_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    print("Addon Buildmasters Classified Bot is running...")
+    print("Addon Buildmasters Advanced SEO Bot is running...")
     app.run_polling()
