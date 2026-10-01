@@ -151,7 +151,7 @@ def seo_menu_keyboard():
             InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc")
         ],
         [
-            InlineKeyboardButton("🛠️️ Services List", callback_data="btn_services"),
+            InlineKeyboardButton("🛠 Services List", callback_data="btn_services"),
             InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq")
         ],
         [
@@ -187,7 +187,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if update.message:
             await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
         elif update.callback_query:
-            await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+            try:
+                await update.callback_query.edit_message_text(welcome_text, reply_markup=main_menu_keyboard(), parse_mode="Markdown")
+            except Exception:
+                await update.callback_query.answer()
         return
 
     user_sessions[chat_id] = {"step": "get_name"}
@@ -287,7 +290,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_sessions[target_id] = session
 
         user_name = session.get("name", str(target_id))
-        await query.edit_message_text(f"✅ **Approved!** User `{user_name}` ko PIN enter karne ka message bhej diya gaya hai.", parse_mode="Markdown")
+        try:
+            await query.edit_message_text(f"✅ **Approved!** User `{user_name}` ko PIN enter karne ka message bhej diya gaya hai.", parse_mode="Markdown")
+        except Exception:
+            await query.answer("Approved!")
 
         try:
             await context.bot.send_message(
@@ -305,7 +311,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("reject_"):
         target_id = int(data.split("_")[1])
         user_sessions.pop(target_id, None)
-        await query.edit_message_text("❌ User access request rejected.")
+        try:
+            await query.edit_message_text("❌ User access request rejected.")
+        except Exception:
+            pass
         try:
             await context.bot.send_message(
                 chat_id=target_id,
@@ -322,28 +331,44 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if data in ["btn_home", "btn_refresh"]:
         await start(update, context)
+        return
 
     # Classification Menus
     elif data == "btn_seo":
         text = "📊 **SEO MANAGEMENT PANEL**\n\nApne Google Business Profile ke SEO aur rankings ko manage karne ke liye option chunein:"
-        await query.edit_message_text(text, reply_markup=seo_menu_keyboard(), parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=seo_menu_keyboard(), parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_post":
         text = "📢 **GMB POSTS MANAGEMENT**\n\nGoogle Business Profile par naye updates aur posts create karne ke liye option chunein:"
-        await query.edit_message_text(text, reply_markup=post_menu_keyboard(), parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=post_menu_keyboard(), parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_create_post":
         text = "✍️ **Create GMB Post:**\n\nYeh feature jald hi fully integrate hoga jisse aap direct bot se post publish kar sakenge."
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Posts Menu", callback_data="btn_post")]])
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_view_posts":
         text = "📋 **Recent Posts Status:**\n\nAbhi koi active post scheduled nahi hai."
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Posts Menu", callback_data="btn_post")]])
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_ranks":
-        await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
+        try:
+            await query.edit_message_text("🔍 Google Search & Maps scan ho raha hai... ⏳")
+        except Exception:
+            pass
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
         lines = []
         for i, kw in enumerate(MONITORED_KEYWORDS, start=1):
@@ -355,10 +380,16 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔄 Re-Scan", callback_data="btn_ranks")],
             [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_scanner":
-        await query.edit_message_text("🔍 Live Keyword Scanner active ho raha hai... ⏳")
+        try:
+            await query.edit_message_text("🔍 Live Keyword Scanner active ho raha hai... ⏳")
+        except Exception:
+            pass
         now = datetime.datetime.now(pytz.timezone('Asia/Kolkata')).strftime('%d %b, %I:%M %p')
         scan_results = []
         
@@ -378,7 +409,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔄 Re-Scan Again", callback_data="btn_scanner")],
             [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
-        await query.edit_message_text(scanner_text, reply_markup=scanner_keyboard, parse_mode="Markdown")
+        try:
+            await query.edit_message_text(scanner_text, reply_markup=scanner_keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_insights":
         ins = get_gmb_insights()
@@ -390,7 +424,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• 🌐 **Website Clicks:** {ins['website']}\n\n"
             f"🎯 **Top Query:** `\"{ins['top_query']}\"`"
         )
-        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_desc":
         desc = (
@@ -405,7 +442,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🚀 Live Update on Google Profile", callback_data="btn_apply_desc")],
             [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
-        await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_apply_desc":
         desc = (
@@ -415,7 +455,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Himachal Pradesh. With earthquake-resistant engineering, premium materials, and transparent "
             "timelines, we deliver dream homes from foundation to finish. Contact Addon Buildmasters today!"
         )
-        await query.edit_message_text("Google par update ho raha hai... 🚀")
+        try:
+            await query.edit_message_text("Google par update ho raha hai... 🚀")
+        except Exception:
+            pass
         try:
             update_gmb_description(desc)
             await query.message.reply_text("🎉 Naya SEO Description Google Profile par LIVE update ho gaya!")
@@ -431,7 +474,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "4. Commercial Hotel & Resort Building\n"
             "5. Interior Renovation & Wooden Work"
         )
-        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=back_keyword(), parse_mode="Markdown")
+        except Exception:
+            pass
 
     elif data == "btn_faq":
         text = (
@@ -440,7 +486,10 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Earthquake Zone-V compliant certified construction.\n"
             "• Modular kitchen handover in 15–21 working days."
         )
-        await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+        try:
+            await query.edit_message_text(text, reply_markup=back_keyword(), parse_mode="Markdown")
+        except Exception:
+            pass
 
 # ================= Main =================
 if __name__ == "__main__":
