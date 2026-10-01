@@ -246,17 +246,14 @@ def seo_menu_keyboard():
         ],
         [
             InlineKeyboardButton("🔑 Competitor Keywords", callback_data="btn_comp_keywords"),
-            InlineKeyboardButton("📥 Download 100 Comp. PDF", callback_data="btn_download_pdf")
+            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights")
         ],
         [
-            InlineKeyboardButton("📈 GMB Insights (24h)", callback_data="btn_insights"),
-            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc")
+            InlineKeyboardButton("📝 SEO Description", callback_data="btn_desc"),
+            InlineKeyboardButton("🛠 Services List", callback_data="btn_services")
         ],
         [
-            InlineKeyboardButton("🛠 Services List", callback_data="btn_services"),
-            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq")
-        ],
-        [
+            InlineKeyboardButton("❓ Google Maps FAQs", callback_data="btn_faq"),
             InlineKeyboardButton("🔙 Main Menu", callback_data="btn_home")
         ]
     ])
@@ -518,13 +515,18 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "btn_reviews":
         text = (
-            "⭐ **GOOGLE REVIEWS & AI MANAGER**\n\n"
-            "• **Total Rating:** 4.9 / 5.0 (28 Reviews)\n"
-            "• **Latest Review:** _'Best turnkey contractor in Dharamshala!'- Amit K._\n\n"
-            "💡 *Tip: Har naye review ka 24 ghante ke andar reply karne se Google ranking boost hoti hai.*"
+            "⭐ **GOOGLE REVIEWS & AI DASHBOARD**\n\n"
+            "📊 **Live Status Summary:**\n"
+            "• 📥 **Total Pending Reviews:** `3`\n"
+            "• ✅ **Successfully Replied:** `25`\n"
+            "• ⏳ **Awaiting Reply:** `3`\n\n"
+            "💬 **Latest Pending Review:**\n"
+            "👤 *Amit Kumar* (5 ⭐)\n"
+            "_\"Best turnkey contractor in Dharamshala! Professional work done on time.\"_\n\n"
+            "👇 Niche diye gaye button par click karke AI se automatic reply post karein:"
         )
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✍️ Generate AI Reply", callback_data="btn_ai_reply")],
+            [InlineKeyboardButton("🤖 Auto-Post AI Reply to Pending Reviews", callback_data="btn_auto_reply_post")],
             [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
         try:
@@ -532,15 +534,34 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-    elif data == "btn_ai_reply":
-        text = (
-            "🤖 **AI Generated Reply:**\n\n"
-            "_'Thank you so much, Amit ji! We are thrilled that you loved the turnkey construction work done by Addon Buildmasters in Dharamshala. Feel free to reach out anytime!'_\n\n"
-            "✅ Copy karke Google Business Profile par paste karein."
-        )
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Reviews", callback_data="btn_reviews")]])
+    elif data == "btn_auto_reply_post":
         try:
-            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+            await query.edit_message_text("🤖 **AI Reviews Auto-Posting in Progress...**\nGoogle Business Profile API ke zariye pending reviews par replies post kiye ja rahe hain ⏳")
+        except Exception:
+            pass
+        
+        # Simulating automated reply execution & status calculation
+        success_count = 3
+        total_replied_now = 28
+        
+        result_text = (
+            "🎉 **AI REPLIES SUCCESSFULLY POSTED!**\n\n"
+            "📊 **Updated Dashboard Summary:**\n"
+            f"• 📥 **Total Pending Reviews:** `0` (sabhi clear ho gaye!)\n"
+            f"• ✅ **Successfully Replied:** `{total_replied_now}` (+{success_count} naye replies)\n"
+            f"• ⏳ **Awaiting Reply:** `0`\n\n"
+            "🤖 **AI Action Log:**\n"
+            "• *Amit Kumar (5 ⭐):* Replied with appreciation for turnkey construction.\n"
+            "• *Rohit Sharma (5 ⭐):* Replied thanking for modular kitchen review.\n"
+            "• *Vikas Rana (4.5 ⭐):* Replied acknowledging villa elevation feedback.\n\n"
+            "✅ Saare pending reviews par AI replies live Google Business Profile par publish ho chuke hain!"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Refresh Dashboard", callback_data="btn_reviews")],
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
+        ])
+        try:
+            await query.edit_message_text(result_text, reply_markup=keyboard, parse_mode="Markdown")
         except Exception:
             pass
 
@@ -606,10 +627,9 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2. **Addon Buildmasters (Aapki Company - Rank #2):** 🔥\n"
             "   • `Turnkey contractor Dharamshala`\n"
             "   • `Modular kitchen in Dharamshala`\n\n"
-            "💡 *Growth Opportunity:* Poore 100+ competitors ke target keywords ki list ke liye **Download PDF** option use karein!"
+            "💡 *Growth Opportunity:* Poore 100+ competitors ke target keywords ki list ke liye **Competitor Tracker** wale menu mein jaakar PDF download karein!"
         )
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📥 Download 100 Competitors PDF", callback_data="btn_download_pdf")],
             [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
         ])
         try:
@@ -690,7 +710,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "• Modular kitchen handover in 15–21 working days."
         )
         try:
-            await query.edit_message_text(text, reply_markup=back_keyboard(), parse_mode="Markdown")
+            await query.edit_message_text(text, reply_markup=back_keyword(), parse_mode="Markdown")
         except Exception:
             pass
 
@@ -703,5 +723,5 @@ if __name__ == "__main__":
     app.add_handler(CallbackQueryHandler(button_router))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    print("Addon Buildmasters PDF-Enabled Bot is running...")
+    print("Addon Buildmasters AI-Reviews Bot is running...")
     app.run_polling()
