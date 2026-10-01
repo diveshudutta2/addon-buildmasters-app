@@ -503,7 +503,33 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "   • `Commercial building construction`\n\n"
             "💡 *Growth Opportunity:* Aapke paas 'Turnkey contractor' aur 'Modular kitchen' ki strong authority hai. Agar aap apne description aur posts mein `House construction cost in Dharamshala` keyword bhi include kar dein, toh aap #1 position grab kar lenge!"
         )
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]])
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📥 View More Competitor Keywords", callback_data="btn_more_comp_keywords")],
+            [InlineKeyboardButton("🔙 SEO Menu", callback_data="btn_seo")]
+        ])
+        try:
+            await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
+        except Exception:
+            pass
+
+    elif data == "btn_more_comp_keywords":
+        text = (
+            "📥 **MORE COMPETITORS & NICHE KEYWORDS**\n\n"
+            "🔍 *Neeche ke ranks par chal rahe baaki local competitors ke target keywords:*\n\n"
+            "4. **Kangra Valley Constructions (Rank #7):**\n"
+            "   • `Affordable housing contractors Kangra`\n"
+            "   • `Earthquake resistant building designs`\n"
+            "   • `Duplex house construction Himachal`\n\n"
+            "5. **Himalayan Infra & Developers (Rank #9):**\n"
+            "   • `Commercial showroom interior design`\n"
+            "   • `Real estate developers Dharamshala`\n"
+            "   • `Steel structure building contractors`\n\n"
+            "6. **Dharamshala Builders & Associates (Rank #12):**\n"
+            "   • `Home renovation services in Kangra`\n"
+            "   • `False ceiling and wooden flooring contractor`\n\n"
+            "🚀 *Pro-Tip:* Inme se kuch long-tail keywords (jaise `Duplex house construction` ya `Home renovation services`) ko aap apne **GMB Posts** mein use karke apni reach aur bada sakte hain!"
+        )
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Main Keywords", callback_data="btn_comp_keywords")]])
         try:
             await query.edit_message_text(text, reply_markup=keyboard, parse_mode="Markdown")
         except Exception:
@@ -515,7 +541,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📈 **GOOGLE BUSINESS PERFORMANCE (Last 24 Hours)**\n\n"
             f"• 👁️ **Profile Searches:** {ins['searches']}\n"
             f"• 📞 **Customer Calls:** {ins['calls']}\n"
-            f"• 🗺️️ **Directions:** {ins['directions']}\n"
+            f"• 🗺️ **Directions:** {ins['directions']}\n"
             f"• 🌐 **Website Clicks:** {ins['website']}\n\n"
             f"🎯 **Top Query:** `\"{ins['top_query']}\"`"
         )
