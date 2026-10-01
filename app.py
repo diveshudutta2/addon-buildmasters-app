@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- FLASK APP (To satisfy Render Port Binding) ---
+# --- FLASK APP (Runs in Background Thread for Render Port Binding) ---
 app = Flask(__name__)
 
 @app.route("/")
@@ -19,6 +19,11 @@ def home():
 @app.route("/health")
 def health():
     return jsonify({"status": "active", "service": "GMB SEO Audit Bot"}), 200
+
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"Starting Flask server on port {port}...")
+    app.run(host="0.0.0.0", port=port, use_reloader=False)
 
 
 # --- GMB SEO AUDIT ENGINE ---
@@ -109,27 +114,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-def run_telegram_bot():
-    """Runs the Telegram Bot polling loop in a separate background thread."""
+def main():
     TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
     if not TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN environment variable is missing!")
         return
 
+    # 1. Start Flask in background thread so it binds to Render port immediately
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    # 2. Run Telegram Bot in the main thread (fixes Python 3.14 signal handler error)
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    logger.info("Telegram Bot started polling in background thread...")
+    logger.info("Telegram Bot started polling in main thread...")
     application.run_polling(drop_pending_updates=True)
 
 
 if __name__ == "__main__":
-    # Start Telegram bot in a background thread so Flask can bind to the Render port
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    # Get Render's assigned port (defaults to 10000)
-    port = int(os.environ.get("PORT", 10000))
-    logger.info(f"Starting Flask server on port {port}...")
-    app.run(host="0.0.0.0", port=port)
+    main()
