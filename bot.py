@@ -254,7 +254,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 1. OWNER APPROVAL ACTION
     if data.startswith("approve_"):
-        target_id = int(data.split("_"))
+        target_id = int(target_id = int(data.split("_")[1]))
         session = user_sessions.get(target_id, {})
         session["step"] = "waiting_pin"
         user_sessions[target_id] = session
@@ -276,7 +276,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     elif data.startswith("reject_"):
-        target_id = int(data.split("_"))
+        target_id = int(target_id = int(data.split("_")[1]))
         user_sessions.pop(target_id, None)
         await query.edit_message_text(f"❌ User request rejected.")
         try:
